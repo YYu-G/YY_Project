@@ -1,0 +1,9 @@
+airConditionerPage
+home
+homePage
+music
+airConditioner
+power
+guide
+softwareCenter
+setting
