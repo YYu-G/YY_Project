@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CarScreenTestSuite name="车载屏幕YOLO自动化测试套件" version="2.0" description="基于YOLO模型识别的车载屏幕自动化测试">
+    
+    <!-- ==================== 全局配置 ==================== -->
+    <GlobalConfig>
+        <!-- YOLO模型配置 -->
+        <YoloModelConfig>
+            <ModelPath>./yolo/models/icon.pt</ModelPath>
+            <ConfidenceThreshold>0.6</ConfidenceThreshold>
+            <IOUThreshold>0.5</IOUThreshold>
+            <Device>cpu</Device>
+            <ImageSize>1024</ImageSize>
+        </YoloModelConfig>
+        
+        <!-- 测试设备配置 -->
+        <DeviceConfig>
+            <DeviceType>车载中控屏</DeviceType>
+            <ScreenResolution>1920x720</ScreenResolution>
+            <ConnectionType>ADB</ConnectionType>
+            <ADBHost>localhost</ADBHost>
+            <ADBPort>5555</ADBPort>
+        </DeviceConfig>
+        
+        <!-- 截图配置 -->
+        <ScreenshotConfig>
+            <SavePath>./screenshots/</SavePath>
+            <SaveOnAction>true</SaveOnAction>
+            <SaveOnFailure>true</SaveOnFailure>
+            <NamingPattern>${timestamp}_${testcase}_${step}</NamingPattern>
+        </ScreenshotConfig>
+        
+        <!-- 执行配置 -->
+        <ExecutionConfig>
+            <MaxRetryCount>3</MaxRetryCount>
+            <RetryDelay>2000</RetryDelay>
+            <DefaultTimeout>10000</DefaultTimeout>
+            <ContinueOnFailure>false</ContinueOnFailure>
+        </ExecutionConfig>
+    </GlobalConfig>
+    
+    <!-- ==================== 元素定义库 ==================== -->
+    <ElementLibrary>
+        <!-- 图片元素定义 -->
+        <ImageElement id="home_button" description="主界面按钮">
+            <ImagePath>./reference_images/home_button.png</ImagePath>
+            <Confidence>0.8</Confidence>
+            <Region x="0" y="0" width="1920" height="720"/>
+        </ImageElement>
+        
+        <ImageElement id="nav_icon" description="导航图标">
+            <ImagePath>./reference_images/nav_icon.png</ImagePath>
+            <Confidence>0.75</Confidence>
+        </ImageElement>
+        
+        <ImageElement id="media_icon" description="媒体图标">
+            <ImagePath>./reference_images/media_icon.png</ImagePath>
+            <Confidence>0.75</Confidence>
+        </ImageElement>
+        
+        <!-- YOLO识别元素定义 -->
+        <YoloElement id="climate_control" description="空调控制按钮">
+            <ClassName>climate_button</ClassName>
+            <Confidence>0.7</Confidence>
+        </YoloElement>
+        
+        <YoloElement id="volume_slider" description="音量滑块">
+            <ClassName>volume_control</ClassName>
+            <Confidence>0.65</Confidence>
+        </YoloElement>
+        
+        <!-- 坐标元素定义 -->
+        <CoordinateElement id="screen_center" description="屏幕中心点">
+            <X>960</X>
+            <Y>360</Y>
+        </CoordinateElement>
+        
+        <CoordinateElement id="top_right_corner" description="右上角">
+            <X>1800</X>
+            <Y>50</Y>
+        </CoordinateElement>
+    </ElementLibrary>
+    
+    <!-- ==================== 测试用例 ==================== -->
+    
+    <!-- 测试用例1: 主界面导航测试 -->
+    <TestCase id="TC_YOLO_001" name="主界面导航YOLO测试" priority="High">
+        <Description>使用YOLO模型识别主界面元素并进行导航测试</Description>
+        
+        <Preconditions>
+            <Precondition>设备已启动并进入主界面</Precondition>
+            <Precondition>YOLO模型已加载</Precondition>
+            <Precondition>网络连接正常</Precondition>
+        </Preconditions>
+        
+        <TestSteps>
+            <!-- 步骤1: 截取当前屏幕 -->
+            <Step id="1" name="截取初始屏幕">
+                <Action type="capture_screen">
+                    <SaveAs>initial_screen</SaveAs>
+                </Action>
+            </Step>
+            
+            <!-- 步骤2: 使用YOLO识别主界面元素 -->
+            <Step id="2" name="识别主界面元素">
+                <Action type="yolo_detect">
+                    <Model>icon.pt</Model>
+                    <Confidence>0.6</Confidence>
+                    <SaveDetection>true</SaveDetection>
+                    <OutputName>home_screen_detection</OutputName>
+                </Action>
+                
+                <!-- 验证识别结果 -->
+                <Verification type="assert">
+                    <Condition>detection_count('home_button') > 0</Condition>
+                    <Message>未检测到主界面按钮</Message>
+                    <OnFailure>fail_test</OnFailure>
+                </Verification>
+            </Step>
+            
+            <!-- 步骤3: 点击导航图标（图片匹配方式） -->
+            <Step id="3" name="点击导航图标">
+                <Action type="click_image">
+                    <ElementRef>nav_icon</ElementRef>
+                    <ClickType>single</ClickType>
+                    <Offset x="10" y="10"/>
+                </Action>
+                <Wait duration="2000"/>
+                
+                <!-- 验证导航界面出现 -->
+                <Verification type="yolo_verify">
+                    <ElementRef>nav_icon</ElementRef>
+                    <ExpectedState>not_visible</ExpectedState>
+                    <Timeout>5000</Timeout>
+                </Verification>
+            </Step>
+            
+            <!-- 步骤4: 在导航界面输入目的地 -->
+            <Step id="4" name="输入目的地">
+                <!-- 使用坐标点击搜索框 -->
+                <Action type="click_coordinate">
+                    <X>300</X>
+                    <Y>100</Y>
+                </Action>
+                <Wait duration="1000"/>
+                
+                <!-- 输入文本 -->
+                <Action type="input_text">
+                    <Text>北京市天安门广场</Text>
+                    <InputMethod>adb_keyboard</InputMethod>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+            
+            <!-- 步骤5: 选择搜索结果（YOLO识别方式） -->
+            <Step id="5" name="选择搜索结果">
+                <Action type="yolo_click">
+                    <ClassName>search_result</ClassName>
+                    <Index>0</Index>
+                    <Confidence>0.7</Confidence>
+                </Action>
+                <Wait duration="3000"/>
+            </Step>
+            
+            <!-- 步骤6: 开始导航 -->
+            <Step id="6" name="开始导航">
+                <Action type="click_image">
+                    <ImagePath>./reference_images/start_navigation.png</ImagePath>
+                    <Confidence>0.8</Confidence>
+                </Action>
+                <Wait duration="5000"/>
+            </Step>
+            
+            <!-- 步骤7: 验证导航状态 -->
+            <Step id="7" name="验证导航状态">
+                <Action type="capture_screen">
+                    <SaveAs>navigation_active</SaveAs>
+                </Action>
+                
+                <Verification type="ocr_verify">
+                    <Text>导航进行中</Text>
+                    <Region x="100" y="600" width="500" height="100"/>
+                    <Confidence>0.8</Confidence>
+                </Verification>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>成功识别主界面元素</Result>
+            <Result>导航图标点击成功</Result>
+            <Result>目的地输入正确</Result>
+            <Result>导航成功启动</Result>
+            <Result>导航状态显示正确</Result>
+        </ExpectedResults>
+        
+        <Postconditions>
+            <Action type="press_key">
+                <Key>HOME</Key>
+            </Action>
+            <Wait duration="2000"/>
+        </Postconditions>
+    </TestCase>
+    
+    <!-- 测试用例2: 媒体播放循环测试 -->
+    <TestCase id="TC_YOLO_002" name="媒体播放循环测试" priority="Medium">
+        <Description>测试媒体播放功能，包含循环测试</Description>
+        
+        <TestSteps>
+            <!-- 步骤1: 打开媒体应用 -->
+            <Step id="1" name="打开媒体应用">
+                <Action type="click_image">
+                    <ElementRef>media_icon</ElementRef>
+                </Action>
+                <Wait duration="3000"/>
+            </Step>
+            
+            <!-- 步骤2: 循环播放测试 -->
+            <Loop times="5" name="播放控制循环测试">
+                <Step id="2.${iteration}" name="播放控制第${iteration}次">
+                    <!-- 播放/暂停 -->
+                    <Action type="yolo_click">
+                        <ClassName>play_pause_button</ClassName>
+                    </Action>
+                    <Wait duration="2000"/>
+                    
+                    <!-- 下一曲 -->
+                    <Action type="yolo_click">
+                        <ClassName>next_button</ClassName>
+                    </Action>
+                    <Wait duration="3000"/>
+                    
+                    <!-- 验证播放状态 -->
+                    <Verification type="yolo_verify">
+                        <ClassName>play_pause_button</ClassName>
+                        <Attribute>state</Attribute>
+                        <ExpectedValue>playing</ExpectedValue>
+                    </Verification>
+                </Step>
+            </Loop>
+            
+            <!-- 步骤3: 音量调节测试 -->
+            <Step id="3" name="音量调节">
+                <!-- 滑动音量控制 -->
+                <Action type="swipe">
+                    <StartX>1800</StartX>
+                    <StartY>300</StartY>
+                    <EndX>1800</EndX>
+                    <EndY>500</EndY>
+                    <Duration>1000</Duration>
+                </Action>
+                <Wait duration="1000"/>
+            </Step>
+            
+            <!-- 步骤4: 返回主界面 -->
+            <Step id="4" name="返回主界面">
+                <Action type="press_key">
+                    <Key>BACK</Key>
+                </Action>
+                <Wait duration="1000"/>
+                <Action type="press_key">
+                    <Key>HOME</Key>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>媒体应用正常打开</Result>
+            <Result>播放控制功能正常（5次循环）</Result>
+            <Result>音量调节功能正常</Result>
+            <Result>成功返回主界面</Result>
+        </ExpectedResults>
+    </TestCase>
+    
+    <!-- 测试用例3: 空调控制条件测试 -->
+    <TestCase id="TC_YOLO_003" name="空调控制条件测试" priority="High">
+        <Description>测试空调控制功能，包含条件判断</Description>
+        
+        <TestSteps>
+            <!-- 步骤1: 打开空调控制 -->
+            <Step id="1" name="打开空调界面">
+                <Action type="yolo_click">
+                    <ElementRef>climate_control</ElementRef>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+            
+            <!-- 步骤2: 条件判断 - 如果温度高于25度则调低 -->
+            <Step id="2" name="智能温度调节">
+                <Condition type="ocr_condition">
+                    <Check>
+                        <Text>当前温度</Text>
+                        <Region x="100" y="200" width="300" height="100"/>
+                        <ExtractPattern>(\d+)°C</ExtractPattern>
+                    </Check>
+                    <If condition="extracted_value > 25">
+                        <Action type="click_coordinate">
+                            <X>400</X>
+                            <Y>300</Y>
+                            <Description>点击温度减按钮</Description>
+                        </Action>
+                        <Wait duration="1000"/>
+                    </If>
+                    <Else>
+                        <Action type="click_coordinate">
+                            <X>500</X>
+                            <Y>300</Y>
+                            <Description>点击温度加按钮</Description>
+                        </Action>
+                        <Wait duration="1000"/>
+                    </Else>
+                </Condition>
+            </Step>
+            
+            <!-- 步骤3: 开启座椅加热 -->
+            <Step id="3" name="开启座椅加热">
+                <Action type="click_image">
+                    <ImagePath>./reference_images/seat_heating.png</ImagePath>
+                    <Confidence>0.7</Confidence>
+                    <MaxAttempts>3</MaxAttempts>
+                    <AttemptDelay>1000</AttemptDelay>
+                </Action>
+                <Wait duration="1500"/>
+                
+                <!-- 验证座椅加热开启 -->
+                <Verification type="image_verify">
+                    <ImagePath>./reference_images/seat_heating_on.png</ImagePath>
+                    <Confidence>0.75</Confidence>
+                    <Region x="600" y="400" width="200" height="100"/>
+                </Verification>
+            </Step>
+            
+            <!-- 步骤4: 关闭空调界面 -->
+            <Step id="4" name="关闭空调界面">
+                <Action type="press_key">
+                    <Key>BACK</Key>
+                </Action>
+                <Wait duration="1000"/>
+                <Action type="press_key">
+                    <Key>HOME</Key>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>空调界面正常打开</Result>
+            <Result>温度智能调节功能正常</Result>
+            <Result>座椅加热功能正常开启</Result>
+            <Result>成功返回主界面</Result>
+        </ExpectedResults>
+    </TestCase>
+    
+    <!-- ==================== 测试套件配置 ==================== -->
+    <SuiteConfig>
+        <!-- 执行顺序 -->
+        <ExecutionOrder>
+            <TestCaseRef>TC_YOLO_001</TestCaseRef>
+            <TestCaseRef>TC_YOLO_002</TestCaseRef>
+            <TestCaseRef>TC_YOLO_003</TestCaseRef>
+        </ExecutionOrder>
+        
+        <!-- 报告配置 -->
+        <ReportConfig>
+            <OutputFormats>
+                <Format>HTML</Format>
+                <Format>JSON</Format>
+                <Format>XML</Format>
+            </OutputFormats>
+            <OutputDirectory>./test_reports/</OutputDirectory>
+            <IncludeScreenshots>true</IncludeScreenshots>
+            <IncludeDetectionResults>true</IncludeDetectionResults>
+            <LogLevel>INFO</LogLevel>
+        </ReportConfig>
+        
+        <!-- 通知配置 -->
+        <NotificationConfig>
+            <EmailNotification enabled="false">
+                <Recipients>
+                    <Email>team@example.com</Email>
+                </Recipients>
+                <OnEvents>
+                    <Event>test_failure</Event>
+                    <Event>test_completion</Event>
+                </OnEvents>
+            </EmailNotification>
+            <SlackNotification enabled="false">
+                <WebhookURL>https://hooks.slack.com/services/...</WebhookURL>
+                <Channel>#automation-tests</Channel>
+            </SlackNotification>
+        </NotificationConfig>
+    </SuiteConfig>
+    
+    <!-- ==================== 数据驱动测试示例 ==================== -->
+    <DataDrivenTests>
+        <TestData id="navigation_destinations">
+            <DataRow>
+                <Destination>北京市天安门广场</Destination>
+                <ExpectedResult>success</ExpectedResult>
+            </DataRow>
+            <DataRow>
+                <Destination>上海外滩</Destination>
+                <ExpectedResult>success</ExpectedResult>
+            </DataRow>
+            <DataRow>
+                <Destination>广州塔</Destination>
+                <ExpectedResult>success</ExpectedResult>
+            </DataRow>
+        </TestData>
+        
+        <TestTemplate id="navigation_test_template">
+            <Parameters>
+                <Parameter name="destination" type="string"/>
+                <Parameter name="expected_result" type="string"/>
+            </Parameters>
+            
+            <TestSteps>
+                <Step name="输入目的地 ${destination}">
+                    <Action type="click_coordinate">
+                        <X>300</X>
+                        <Y>100</Y>
+                    </Action>
+                    <Action type="input_text">
+                        <Text>${destination}</Text>
+                    </Action>
+                </Step>
+                
+                <Step name="验证导航结果">
+                    <Verification type="assert">
+                        <Condition>navigation_result == '${expected_result}'</Condition>
+                    </Verification>
+                </Step>
+            </TestSteps>
+        </TestTemplate>
+    </DataDrivenTests>
+    
+</CarScreenTestSuite>

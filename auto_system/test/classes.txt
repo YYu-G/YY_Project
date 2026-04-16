@@ -1,0 +1,3 @@
+airConditioner
+home
+temp_up

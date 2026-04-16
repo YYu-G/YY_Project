@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CarTestFlow name="Car HMI Test Flow Template" version="1.0">
+  <ImageResources>
+    <Image id="home_icon" path="./images/home.png" description="Home icon" />
+    <Image id="ac_icon" path="./images/ac.png" description="AC icon" />
+    <Image id="ac_panel" path="./images/ac_panel.png" description="AC panel" />
+    <Image id="temp_up" path="./images/temp_up.png" description="Temperature up" />
+  </ImageResources>
+
+  <TestCase id="TC_TEMPLATE_001" name="Template test case">
+    <Description>Demonstrates the unified XML schema.</Description>
+    <Steps>
+      <Step id="1" name="Open AC panel">
+        <Action type="click_image" imageId="ac_icon" />
+        <Action type="wait" duration="1000" />
+        <Assert type="verify_image" imageId="ac_panel" timeout="5000" expectedState="visible" />
+        <Assert type="verify_image_present" imageId="ac_panel" timeout="3000" />
+      </Step>
+
+      <Step id="2" name="Coordinate click and swipe">
+        <Action type="click_coordinate" x="300" y="420" />
+        <Action type="wait" duration="300" />
+        <Action type="swipe" startX="300" startY="420" endX="700" endY="420" duration="600" />
+        <Action type="wait" duration="300" />
+      </Step>
+
+      <Loop times="2" name="Temperature loop">
+        <Step id="3.${iteration}" name="Temperature iteration ${iteration}">
+          <Action type="click_image" imageId="temp_up" />
+          <Action type="wait" duration="300" />
+          <Assert type="verify_text" region="100,120,300,80" text="TEMP" timeout="2000" />
+        </Step>
+      </Loop>
+
+      <Step id="4" name="Return home">
+        <Action type="press_key" key="HOME" />
+        <Action type="wait" duration="500" />
+        <Assert type="verify_image" imageId="home_icon" timeout="5000" expectedState="visible" />
+        <Assert type="verify_page" pageName="home_page" pageImageId="home_icon" timeout="3000" />
+      </Step>
+    </Steps>
+  </TestCase>
+</CarTestFlow>

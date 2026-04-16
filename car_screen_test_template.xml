@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TestSuite name="车载屏幕自动化测试套件" version="1.0" description="车载屏幕功能自动化测试">
+    
+    <!-- 测试环境配置 -->
+    <TestEnvironment>
+        <Device type="车载中控屏" model="Model-X2024" resolution="1920x720"/>
+        <OS name="Android Automotive" version="12.0"/>
+        <Connection type="ADB" port="5555"/>
+        <Settings>
+            <Setting name="screen_timeout" value="300"/>
+            <Setting name="default_language" value="zh-CN"/>
+            <Setting name="brightness" value="70"/>
+        </Settings>
+    </TestEnvironment>
+    
+    <!-- 测试用例1: 主界面导航测试 -->
+    <TestCase id="TC001" name="主界面导航测试" priority="High">
+        <Description>测试主界面的基本导航功能</Description>
+        <Preconditions>
+            <Precondition>设备已启动并进入主界面</Precondition>
+            <Precondition>网络连接正常</Precondition>
+        </Preconditions>
+        
+        <TestSteps>
+            <!-- 步骤1: 验证主界面元素 -->
+            <Step id="1" name="验证主界面元素">
+                <Action type="verify_element">
+                    <Element id="home_screen" selector="id:com.car.home:id/main_layout" timeout="5000"/>
+                    <Expected>
+                        <Property name="visible" value="true"/>
+                        <Property name="enabled" value="true"/>
+                    </Expected>
+                </Action>
+            </Step>
+            
+            <!-- 步骤2: 点击导航图标 -->
+            <Step id="2" name="点击导航应用">
+                <Action type="click">
+                    <Element id="nav_icon" selector="id:com.car.home:id/nav_icon" timeout="3000"/>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+            
+            <!-- 步骤3: 验证导航界面加载 -->
+            <Step id="3" name="验证导航界面">
+                <Action type="verify_element">
+                    <Element id="nav_screen" selector="id:com.car.nav:id/map_view" timeout="10000"/>
+                    <Expected>
+                        <Property name="visible" value="true"/>
+                    </Expected>
+                </Action>
+            </Step>
+            
+            <!-- 步骤4: 输入目的地 -->
+            <Step id="4" name="输入目的地">
+                <Action type="click">
+                    <Element id="search_box" selector="id:com.car.nav:id/search_input" timeout="3000"/>
+                </Action>
+                <Action type="input_text">
+                    <Text>北京市天安门广场</Text>
+                    <Element id="search_input" selector="id:com.car.nav:id/search_input"/>
+                </Action>
+                <Wait duration="1000"/>
+            </Step>
+            
+            <!-- 步骤5: 选择搜索结果 -->
+            <Step id="5" name="选择搜索结果">
+                <Action type="click">
+                    <Element id="first_result" selector="xpath://android.widget.ListView/android.widget.TextView[1]" timeout="5000"/>
+                </Action>
+                <Wait duration="3000"/>
+            </Step>
+            
+            <!-- 步骤6: 开始导航 -->
+            <Step id="6" name="开始导航">
+                <Action type="click">
+                    <Element id="start_nav" selector="id:com.car.nav:id/start_button" timeout="3000"/>
+                </Action>
+                <Wait duration="5000"/>
+            </Step>
+            
+            <!-- 步骤7: 验证导航开始 -->
+            <Step id="7" name="验证导航已开始">
+                <Action type="verify_text">
+                    <Element id="nav_status" selector="id:com.car.nav:id/navigation_status"/>
+                    <ExpectedText>导航进行中</ExpectedText>
+                </Action>
+            </Step>
+            
+            <!-- 步骤8: 返回主界面 -->
+            <Step id="8" name="返回主界面">
+                <Action type="press_key">
+                    <Key>HOME</Key>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>成功进入导航界面</Result>
+            <Result>能够输入目的地并开始导航</Result>
+            <Result>导航状态显示正确</Result>
+            <Result>能够正常返回主界面</Result>
+        </ExpectedResults>
+        
+        <Postconditions>
+            <Postcondition>停止导航</Postcondition>
+            <Postcondition>返回主界面</Postcondition>
+        </Postconditions>
+    </TestCase>
+    
+    <!-- 测试用例2: 媒体播放测试 -->
+    <TestCase id="TC002" name="媒体播放测试" priority="Medium">
+        <Description>测试媒体播放功能</Description>
+        <Preconditions>
+            <Precondition>设备在主界面</Precondition>
+            <Precondition>USB设备已连接或有网络音乐源</Precondition>
+        </Preconditions>
+        
+        <TestSteps>
+            <!-- 步骤1: 打开媒体应用 -->
+            <Step id="1" name="打开媒体应用">
+                <Action type="click">
+                    <Element id="media_icon" selector="id:com.car.home:id/media_icon" timeout="3000"/>
+                </Action>
+                <Wait duration="3000"/>
+            </Step>
+            
+            <!-- 步骤2: 选择音乐源 -->
+            <Step id="2" name="选择USB音乐">
+                <Action type="click">
+                    <Element id="usb_source" selector="text:USB音乐" timeout="3000"/>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+            
+            <!-- 步骤3: 播放音乐 -->
+            <Step id="3" name="播放第一首歌">
+                <Action type="click">
+                    <Element id="first_song" selector="xpath://android.widget.ListView/android.widget.RelativeLayout[1]" timeout="5000"/>
+                </Action>
+                <Wait duration="3000"/>
+            </Step>
+            
+            <!-- 步骤4: 验证播放状态 -->
+            <Step id="4" name="验证播放状态">
+                <Action type="verify_element">
+                    <Element id="play_button" selector="id:com.car.media:id/play_pause" timeout="3000"/>
+                    <Expected>
+                        <Property name="selected" value="true"/>
+                    </Expected>
+                </Action>
+            </Step>
+            
+            <!-- 步骤5: 调节音量 -->
+            <Step id="5" name="增加音量">
+                <Action type="swipe">
+                    <Element id="volume_slider" selector="id:com.car.media:id/volume_slider"/>
+                    <Direction>right</Direction>
+                    <Duration>500</Duration>
+                </Action>
+            </Step>
+            
+            <!-- 步骤6: 下一曲 -->
+            <Step id="6" name="播放下一曲">
+                <Action type="click">
+                    <Element id="next_button" selector="id:com.car.media:id/next" timeout="3000"/>
+                </Action>
+                <Wait duration="3000"/>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>成功打开媒体应用</Result>
+            <Result>能够选择音乐源并播放</Result>
+            <Result>播放控制功能正常</Result>
+            <Result>音量调节功能正常</Result>
+        </ExpectedResults>
+    </TestCase>
+    
+    <!-- 测试用例3: 空调控制测试 -->
+    <TestCase id="TC003" name="空调控制测试" priority="High">
+        <Description>测试空调控制功能</Description>
+        
+        <TestSteps>
+            <!-- 步骤1: 打开空调控制 -->
+            <Step id="1" name="打开空调界面">
+                <Action type="click">
+                    <Element id="climate_icon" selector="id:com.car.home:id/climate_icon" timeout="3000"/>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+            
+            <!-- 步骤2: 调节温度 -->
+            <Step id="2" name="调节驾驶员侧温度">
+                <Action type="set_value">
+                    <Element id="driver_temp" selector="id:com.car.climate:id/driver_temp"/>
+                    <Value>22.5</Value>
+                </Action>
+                <Wait duration="1000"/>
+            </Step>
+            
+            <!-- 步骤3: 开启座椅加热 -->
+            <Step id="3" name="开启座椅加热">
+                <Action type="click">
+                    <Element id="seat_heat" selector="id:com.car.climate:id/seat_heating" timeout="2000"/>
+                </Action>
+                <Wait duration="1000"/>
+            </Step>
+            
+            <!-- 步骤4: 验证设置生效 -->
+            <Step id="4" name="验证温度设置">
+                <Action type="verify_value">
+                    <Element id="temp_display" selector="id:com.car.climate:id/temp_display"/>
+                    <ExpectedValue>22.5°C</ExpectedValue>
+                </Action>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>成功打开空调控制界面</Result>
+            <Result>能够调节温度</Result>
+            <Result>座椅加热功能正常</Result>
+        </ExpectedResults>
+    </TestCase>
+    
+    <!-- 测试用例4: 语音控制测试 -->
+    <TestCase id="TC004" name="语音控制测试" priority="Medium">
+        <Description>测试语音控制功能</Description>
+        
+        <TestSteps>
+            <!-- 步骤1: 激活语音助手 -->
+            <Step id="1" name="激活语音助手">
+                <Action type="press_key">
+                    <Key>VOICE_ASSISTANT</Key>
+                </Action>
+                <Wait duration="2000"/>
+            </Step>
+            
+            <!-- 步骤2: 语音输入 -->
+            <Step id="2" name="语音输入指令">
+                <Action type="voice_input">
+                    <Command>打开导航</Command>
+                    <Language>zh-CN</Language>
+                </Action>
+                <Wait duration="5000"/>
+            </Step>
+            
+            <!-- 步骤3: 验证响应 -->
+            <Step id="3" name="验证语音响应">
+                <Action type="verify_text">
+                    <Element id="voice_response" selector="id:com.car.voice:id/response_text"/>
+                    <ExpectedText>正在打开导航</ExpectedText>
+                    <Timeout>10000</Timeout>
+                </Action>
+            </Step>
+        </TestSteps>
+        
+        <ExpectedResults>
+            <Result>成功激活语音助手</Result>
+            <Result>语音指令被正确识别</Result>
+            <Result>系统正确响应语音指令</Result>
+        </ExpectedResults>
+    </TestCase>
+    
+    <!-- 测试报告配置 -->
+    <ReportConfig>
+        <OutputFormat>HTML</OutputFormat>
+        <OutputFormat>XML</OutputFormat>
+        <ScreenshotOnFailure>true</ScreenshotOnFailure>
+        <VideoRecording>false</VideoRecording>
+        <LogLevel>DEBUG</LogLevel>
+    </ReportConfig>
+    
+    <!-- 测试执行配置 -->
+    <ExecutionConfig>
+        <RetryOnFailure count="2" delay="5000"/>
+        <Timeout unit="minutes">30</Timeout>
+        <ContinueOnFailure>false</ContinueOnFailure>
+        <ParallelExecution>false</ParallelExecution>
+    </ExecutionConfig>
+    
+</TestSuite>
