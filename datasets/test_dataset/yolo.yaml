@@ -1,0 +1,11 @@
+names:
+  0: button
+  1: icon
+  2: text
+  3: checkbox
+  4: slider
+nc: 5
+path: d:\uid02310\Desktop\YY_Project\datasets\test_dataset
+test: images/test
+train: images/train
+val: images/val

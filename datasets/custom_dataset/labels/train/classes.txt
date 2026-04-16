@@ -1,0 +1,5 @@
+airConditioner
+home
+music
+power
+setting

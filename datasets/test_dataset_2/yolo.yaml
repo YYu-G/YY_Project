@@ -1,0 +1,11 @@
+names:
+  0: airConditionerPage
+  1: home
+  2: homePage
+  3: music
+  4: airConditioner
+nc: 5
+path: d:\uid02310\Desktop\YY_Project\datasets\test_dataset_2
+test: images/test
+train: images/train
+val: images/val

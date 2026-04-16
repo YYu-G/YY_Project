@@ -1,0 +1,15 @@
+图片路径: ../../datasets/yolo-pageAndBottom/images/train/airConditioner.png
+图片尺寸: 1920x1080
+类别: airConditioner, home, music, asadasqdqas
+标注数量: 2
+
+标注 1:
+  类别: airConditioner (ID: 0)
+  位置: [392, 201, 203, 282]
+  格式: [x, y, 宽度, 高度]
+
+标注 2:
+  类别: asadasqdqas (ID: 3)
+  位置: [848, 332, 174, 186]
+  格式: [x, y, 宽度, 高度]
+
