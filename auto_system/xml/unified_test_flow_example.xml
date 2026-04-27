@@ -11,7 +11,7 @@
     <Description>Covers all supported operation definitions in one flow.</Description>
     <Steps>
       <Step id="1" name="Open AC">
-        <Action type="click_image" imageId="ac_icon" />
+        <Action type="click_image" imageId="ac_icon" onPageImageId="home_icon" />
         <Action type="wait" duration="1000" />
         <Assert type="verify_image" imageId="ac_panel" timeout="5000" expectedState="visible" />
         <Assert type="verify_image_present" imageId="ac_panel" timeout="3000" />
@@ -26,7 +26,7 @@
 
       <Loop times="2" name="Increase temperature loop">
         <Step id="3.${iteration}" name="Increase iteration ${iteration}">
-          <Action type="click_image" imageId="temp_up" />
+          <Action type="click_image" imageId="temp_up" onPageImageId="ac_panel" />
           <Action type="wait" duration="300" />
           <Assert type="verify_text" region="100,120,300,80" text="TEMP" timeout="2000" />
         </Step>
@@ -35,7 +35,7 @@
       <Step id="4" name="Back home">
         <Action type="press_key" key="HOME" />
         <Action type="wait" duration="500" />
-        <Assert type="verify_image" imageId="home_icon" timeout="5000" expectedState="visible" />
+        <Assert type="verify_image" imageId="home_icon" onPageImageId="home_icon" timeout="5000" expectedState="visible" />
         <Assert type="verify_page" pageName="home_page" pageImageId="home_icon" timeout="3000" />
       </Step>
     </Steps>

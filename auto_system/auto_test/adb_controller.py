@@ -30,6 +30,7 @@ class AdbController:
         self.screen_source = "adb"
         self.model_controller = None
         self.image_resources: Dict[str, Dict[str, str]] = {}
+        self._device_size_cache: Optional[Tuple[int, int]] = None
 
         # Mock state for assert simulation.
         self.mock_image_visibility: Dict[str, bool] = {}
@@ -228,29 +229,40 @@ class AdbController:
         self,
         image_id: str,
         image_positions: Optional[Dict[str, Tuple[int, int]]] = None,
+        on_page_image_id: str = "",
     ) -> bool:
-        if self.model_controller is not None:
-            detection = self._detect_target(image_id)
-            if detection is not None:
-                center = detection["center"]
-                print(
-                    f"[DETECT] click_image '{image_id}' -> {detection['class_name']} "
-                    f"conf={detection['confidence']:.3f} center=({center['x']},{center['y']})"
-                )
-                return self.adb_tap(center["x"], center["y"])
-            print(f"[DETECT] click_image '{image_id}' not found by model.")
+        if self.model_controller is None:
+            print("[DETECT] click_image failed: model_controller is required for image operations.")
             return False
 
-        if image_positions and image_id in image_positions:
-            x, y = image_positions[image_id]
-            return self.adb_tap(x, y)
-
-        # In simulation mode, allow click_image without coordinates.
-        if self.simulate:
-            print(f"[SIM] click_image '{image_id}' (no coordinate provided, assume success)")
-            return True
-
-        print(f"[ADB] click_image '{image_id}' failed: no position provided.")
+        detection_bundle = self._detect_target(image_id=image_id, on_page_image_id=on_page_image_id)
+        if detection_bundle is not None:
+            target = detection_bundle["target"]
+            center = target["center"]
+            tap_x, tap_y = int(center["x"]), int(center["y"])
+            if self.screen_source == "desktop" and not self.simulate:
+                mapped = self._map_desktop_point_to_device(
+                    point=(tap_x, tap_y),
+                    page_detection=detection_bundle.get("page"),
+                    screen_size=detection_bundle.get("screen_size"),
+                )
+                if mapped is None:
+                    print(
+                        "[DETECT] click_image failed: cannot map desktop coordinate to device. "
+                        "Provide a reliable onPageImageId or use adb screen source."
+                    )
+                    return False
+                tap_x, tap_y = mapped
+            print(
+                f"[DETECT] click_image '{image_id}' -> {target['class_name']} "
+                f"conf={target['confidence']:.3f} center=({center['x']},{center['y']}) "
+                f"tap=({tap_x},{tap_y})"
+            )
+            return self.adb_tap(tap_x, tap_y)
+        print(
+            f"[DETECT] click_image '{image_id}' not found by model."
+            + (f" page='{on_page_image_id}'" if on_page_image_id else "")
+        )
         return False
 
     def click_coordinate(self, x: int, y: int) -> bool:
@@ -262,36 +274,31 @@ class AdbController:
     def press_key(self, key: str) -> bool:
         return self.adb_press_key(key)
 
-    def verify_image(self, image_id: str, expected_state: str = "visible", timeout: int = 5000) -> bool:
-        if self.model_controller is not None:
-            found = self._wait_model_detect(image_id=image_id, timeout=timeout)
-            expect_visible = str(expected_state).lower() == "visible"
-            ok = (found is not None) == expect_visible
-            print(
-                f"[ASSERT] verify_image imageId={image_id} expected={expected_state} "
-                f"found={found is not None} -> {'PASS' if ok else 'FAIL'}"
-            )
-            return ok
+    def verify_image(
+        self,
+        image_id: str,
+        expected_state: str = "visible",
+        timeout: int = 5000,
+        on_page_image_id: str = "",
+    ) -> bool:
+        if self.model_controller is None:
+            print("[ASSERT] verify_image failed: model_controller is required for image operations.")
+            return False
 
+        found = self._wait_model_detect(
+            image_id=image_id,
+            timeout=timeout,
+            on_page_image_id=on_page_image_id,
+        )
         expect_visible = str(expected_state).lower() == "visible"
-        start = time.time()
-        timeout_s = max(int(timeout), 0) / 1000.0
-
-        while True:
-            current_visible = self.mock_image_visibility.get(image_id, True if self.simulate else False)
-            ok = current_visible == expect_visible
-            if ok:
-                print(
-                    f"[ASSERT] verify_image imageId={image_id} expected={expected_state} -> PASS"
-                )
-                return True
-
-            if (time.time() - start) >= timeout_s:
-                print(
-                    f"[ASSERT] verify_image imageId={image_id} expected={expected_state} -> FAIL"
-                )
-                return False
-            time.sleep(0.1)
+        ok = (found is not None) == expect_visible
+        print(
+            f"[ASSERT] verify_image imageId={image_id} expected={expected_state} "
+            f"found={found is not None}"
+            + (f" onPageImageId={on_page_image_id}" if on_page_image_id else "")
+            + f" -> {'PASS' if ok else 'FAIL'}"
+        )
+        return ok
 
     def verify_text(self, region: Dict[str, int], text: str, timeout: int = 2000) -> bool:
         # Current version uses mock text state. Future: replace by OCR in region.
@@ -309,9 +316,19 @@ class AdbController:
                 return False
             time.sleep(0.1)
 
-    def verify_image_present(self, image_id: str, timeout: int = 3000) -> bool:
+    def verify_image_present(
+        self,
+        image_id: str,
+        timeout: int = 3000,
+        on_page_image_id: str = "",
+    ) -> bool:
         # "Image present in current page" is equivalent to a visible-state image check.
-        return self.verify_image(image_id=image_id, expected_state="visible", timeout=timeout)
+        return self.verify_image(
+            image_id=image_id,
+            expected_state="visible",
+            timeout=timeout,
+            on_page_image_id=on_page_image_id,
+        )
 
     def verify_page(
         self,
@@ -319,41 +336,220 @@ class AdbController:
         page_image_id: str = "",
         timeout: int = 3000,
     ) -> bool:
-        # Primary strategy: page anchor image exists.
-        if page_image_id:
-            return self.verify_image_present(image_id=page_image_id, timeout=timeout)
+        if not page_image_id:
+            print("[ASSERT] verify_page failed: pageImageId is required for model-based page verification.")
+            return False
+        return self.verify_image_present(image_id=page_image_id, timeout=timeout)
 
-        # Fallback strategy in simulation: compare page name.
-        start = time.time()
-        timeout_s = max(int(timeout), 0) / 1000.0
-        while True:
-            if page_name and self.mock_current_page == page_name:
-                print(f"[ASSERT] verify_page pageName={page_name} -> PASS")
-                return True
-            if (time.time() - start) >= timeout_s:
-                print(f"[ASSERT] verify_page pageName={page_name} -> FAIL")
-                return False
-            time.sleep(0.1)
-
-    def _wait_model_detect(self, image_id: str, timeout: int) -> Optional[Dict[str, Any]]:
+    def _wait_model_detect(
+        self,
+        image_id: str,
+        timeout: int,
+        on_page_image_id: str = "",
+    ) -> Optional[Dict[str, Any]]:
         timeout_s = max(int(timeout), 0) / 1000.0
         started = time.time()
         while True:
-            detection = self._detect_target(image_id=image_id)
+            detection = self._detect_target(
+                image_id=image_id,
+                on_page_image_id=on_page_image_id,
+            )
             if detection is not None:
                 return detection
             if (time.time() - started) >= timeout_s:
                 return None
             time.sleep(0.15)
 
-    def _detect_target(self, image_id: str) -> Optional[Dict[str, Any]]:
+    def _detect_target(
+        self,
+        image_id: str,
+        on_page_image_id: str = "",
+    ) -> Optional[Dict[str, Any]]:
         if self.model_controller is None:
             return None
         screen_path = self._capture_for_detection()
         if not screen_path:
             return None
+        detections = self._infer_screen_detections(screen_path)
+        if not detections:
+            return None
+
+        page_detection: Optional[Dict[str, Any]] = None
+        if on_page_image_id:
+            page_labels = self._build_target_labels(on_page_image_id)
+            page_detection = self._pick_best_detection(detections, page_labels, region=None)
+            if page_detection is None:
+                return None
+
         labels = self._build_target_labels(image_id)
-        return self.model_controller.find_target(str(screen_path), labels)
+        region = page_detection.get("bbox") if page_detection else None
+        target_detection = self._pick_best_detection(detections, labels, region=region)
+        if target_detection is None:
+            return None
+
+        return {
+            "target": target_detection,
+            "page": page_detection,
+            "screen_size": self._read_image_size(screen_path),
+        }
+
+    def _infer_screen_detections(self, screen_path: Path) -> List[Dict[str, Any]]:
+        infer_fn = getattr(self.model_controller, "infer", None)
+        if callable(infer_fn):
+            try:
+                return list(infer_fn(str(screen_path)) or [])
+            except Exception as e:
+                print(f"[DETECT] infer failed: {e}")
+                return []
+
+        # Compatibility fallback if only find_target exists on custom model controller.
+        detections: List[Dict[str, Any]] = []
+        find_fn = getattr(self.model_controller, "find_target", None)
+        if callable(find_fn):
+            labels = self._build_target_labels("")
+            best = find_fn(str(screen_path), labels)
+            if best:
+                detections.append(best)
+        return detections
+
+    def _pick_best_detection(
+        self,
+        detections: List[Dict[str, Any]],
+        labels: List[str],
+        region: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not detections or not labels:
+            return None
+        exact_labels: List[str] = []
+        fuzzy_labels: List[str] = []
+        for item in labels:
+            raw = str(item)
+            exact = self._normalize_label_exact(raw)
+            fuzzy = self._normalize_label(raw)
+            if exact and exact not in exact_labels:
+                exact_labels.append(exact)
+            if fuzzy and fuzzy not in fuzzy_labels:
+                fuzzy_labels.append(fuzzy)
+        if not exact_labels and not fuzzy_labels:
+            return None
+        exact_rank = {name: idx for idx, name in enumerate(exact_labels)}
+        fuzzy_rank = {name: idx for idx, name in enumerate(fuzzy_labels)}
+
+        best: Optional[Dict[str, Any]] = None
+        best_rank = 10**9
+        for det in detections:
+            det_name = str(det.get("class_name", ""))
+            det_exact = self._normalize_label_exact(det_name)
+            det_fuzzy = self._normalize_label(det_name)
+
+            if det_exact in exact_rank:
+                rank = exact_rank[det_exact]
+            elif det_fuzzy in fuzzy_rank:
+                rank = len(exact_labels) + fuzzy_rank[det_fuzzy]
+            else:
+                continue
+            if region is not None and not self._is_center_in_region(det, region):
+                continue
+            conf = float(det.get("confidence", 0.0))
+            if best is None:
+                best = det
+                best_rank = rank
+                continue
+            best_conf = float(best.get("confidence", 0.0))
+            if rank < best_rank or (rank == best_rank and conf > best_conf):
+                best = det
+                best_rank = rank
+        return best
+
+    def _is_center_in_region(self, detection: Dict[str, Any], region: Dict[str, Any]) -> bool:
+        center = detection.get("center", {}) or {}
+        x = int(center.get("x", -1))
+        y = int(center.get("y", -1))
+        x1 = int(region.get("x1", 0))
+        y1 = int(region.get("y1", 0))
+        x2 = int(region.get("x2", 0))
+        y2 = int(region.get("y2", 0))
+        return x1 <= x <= x2 and y1 <= y <= y2
+
+    def _normalize_label(self, label: str) -> str:
+        normalized = self._normalize_label_exact(label)
+        normalized = normalized.replace("-", "_").replace(" ", "_")
+        for suffix in ("_icon", "_button", "_btn", "_panel", "_page"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        return normalized
+
+    def _normalize_label_exact(self, label: str) -> str:
+        return label.lower().strip().replace("-", "_").replace(" ", "_")
+
+    def _read_image_size(self, image_path: Path) -> Optional[Tuple[int, int]]:
+        try:
+            from PIL import Image
+
+            with Image.open(str(image_path)) as img:
+                return int(img.width), int(img.height)
+        except Exception:
+            return None
+
+    def _get_device_size(self) -> Optional[Tuple[int, int]]:
+        if self._device_size_cache is not None:
+            return self._device_size_cache
+        if self.simulate or not self._adb_available():
+            return None
+
+        cmd = self._build_adb_prefix() + ["shell", "wm", "size"]
+        stdout, _ = self.run_adb_command(cmd, timeout=5)
+        if stdout is None:
+            return None
+        text = str(stdout)
+        # expected: "Physical size: 1080x1920"
+        for line in text.splitlines():
+            if "size" in line and "x" in line:
+                parts = line.split(":")
+                right = parts[-1].strip() if parts else line.strip()
+                wh = right.lower().replace(" ", "")
+                if "x" not in wh:
+                    continue
+                w_str, h_str = wh.split("x", 1)
+                if w_str.isdigit() and h_str.isdigit():
+                    self._device_size_cache = (int(w_str), int(h_str))
+                    return self._device_size_cache
+        return None
+
+    def _map_desktop_point_to_device(
+        self,
+        point: Tuple[int, int],
+        page_detection: Optional[Dict[str, Any]],
+        screen_size: Optional[Tuple[int, int]],
+    ) -> Optional[Tuple[int, int]]:
+        device_size = self._get_device_size()
+        if device_size is None:
+            return None
+        dev_w, dev_h = device_size
+
+        if page_detection is not None:
+            bbox = page_detection.get("bbox", {}) or {}
+            x1 = int(bbox.get("x1", 0))
+            y1 = int(bbox.get("y1", 0))
+            x2 = int(bbox.get("x2", 0))
+            y2 = int(bbox.get("y2", 0))
+            src_w = max(x2 - x1, 1)
+            src_h = max(y2 - y1, 1)
+            rel_x = (point[0] - x1) / float(src_w)
+            rel_y = (point[1] - y1) / float(src_h)
+        elif screen_size is not None:
+            src_w = max(int(screen_size[0]), 1)
+            src_h = max(int(screen_size[1]), 1)
+            rel_x = point[0] / float(src_w)
+            rel_y = point[1] / float(src_h)
+        else:
+            return None
+
+        rel_x = min(max(rel_x, 0.0), 1.0)
+        rel_y = min(max(rel_y, 0.0), 1.0)
+        mapped_x = min(max(int(round(rel_x * dev_w)), 0), dev_w - 1)
+        mapped_y = min(max(int(round(rel_y * dev_h)), 0), dev_h - 1)
+        return mapped_x, mapped_y
 
     def _build_target_labels(self, image_id: str) -> List[str]:
         labels = [image_id]
@@ -412,7 +608,11 @@ class AdbController:
 
         if category == "action":
             if op_type == "click_image":
-                return self.click_image(str(params.get("imageId", "")), image_positions=image_positions)
+                return self.click_image(
+                    str(params.get("imageId", "")),
+                    image_positions=image_positions,
+                    on_page_image_id=str(params.get("onPageImageId", "")),
+                )
             if op_type == "click_coordinate":
                 return self.click_coordinate(int(params.get("x", 0)), int(params.get("y", 0)))
             if op_type == "swipe":
@@ -436,6 +636,7 @@ class AdbController:
                     image_id=str(params.get("imageId", "")),
                     expected_state=str(params.get("expectedState", "visible")),
                     timeout=int(params.get("timeout", 5000)),
+                    on_page_image_id=str(params.get("onPageImageId", "")),
                 )
             if op_type == "verify_text":
                 return self.verify_text(
@@ -447,6 +648,7 @@ class AdbController:
                 return self.verify_image_present(
                     image_id=str(params.get("imageId", "")),
                     timeout=int(params.get("timeout", 3000)),
+                    on_page_image_id=str(params.get("onPageImageId", "")),
                 )
             if op_type == "verify_page":
                 return self.verify_page(
