@@ -60,11 +60,21 @@ class ModelTrainer:
         total = len(image_files)
         print(f"Found {total} images. Start annotation...")
 
-        for idx, image_path in enumerate(image_files, 1):
-            print(f"[{idx}/{total}] Annotating: {image_path.name}")
+        image_paths = [str(p) for p in image_files]
+        annotation_store: Dict[str, List[Dict[str, Any]]] = {}
+        i = 0
+        while 0 <= i < total:
+            image_path = image_files[i]
+            print(f"[{i + 1}/{total}] Annotating: {image_path.name}")
             from annotation_ui import AnnotationTool
 
-            tool = AnnotationTool(str(image_path), class_names)
+            tool = AnnotationTool(
+                str(image_path),
+                class_names,
+                image_paths=image_paths,
+                current_image_idx=i,
+                initial_annotations=annotation_store.get(str(image_path), []),
+            )
             annotations = tool.run()
 
             if annotations is None:
@@ -74,15 +84,27 @@ class ModelTrainer:
                     "message": f"Annotation cancelled at image: {image_path.name}",
                 }
 
-            if skip_unlabeled and not annotations:
-                continue
+            annotation_store[str(image_path)] = annotations
 
-            samples.append(
-                {
-                    "image_path": str(image_path),
-                    "annotations": annotations,
-                }
-            )
+            if getattr(tool, "finish_session", False):
+                print("Finish triggered by user (key: s). Stop annotation and build dataset.")
+                break
+
+            jump_to = tool.pending_jump_image_idx
+            if jump_to is not None and 0 <= jump_to < total and jump_to != i:
+                i = jump_to
+            else:
+                i += 1
+
+        # Build samples after annotation session, preserving image order.
+        samples = []
+        for p in image_files:
+            if str(p) not in annotation_store:
+                continue
+            anns = annotation_store.get(str(p), [])
+            if skip_unlabeled and not anns:
+                continue
+            samples.append({"image_path": str(p), "annotations": anns})
 
         if not samples:
             return {
