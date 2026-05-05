@@ -49,8 +49,6 @@ class ModelTrainer:
             class_names = []
         if classes_file:
             class_names = load_class_names_from_file(classes_file)
-        if not class_names:
-            raise ValueError("class_names is empty, provide class_names or classes_file")
 
         image_files = collect_image_files(raw_image_dir)
         if not image_files:
@@ -87,7 +85,7 @@ class ModelTrainer:
             annotation_store[str(image_path)] = annotations
 
             if getattr(tool, "finish_session", False):
-                print("Finish triggered by user (key: s). Stop annotation and build dataset.")
+                print("Save dataset triggered by user. Stop annotation and build dataset.")
                 break
 
             jump_to = tool.pending_jump_image_idx
@@ -111,6 +109,13 @@ class ModelTrainer:
                 "success": False,
                 "cancelled": False,
                 "message": "No samples available after annotation.",
+            }
+
+        if not class_names:
+            return {
+                "success": False,
+                "cancelled": False,
+                "message": "No classes created. Press n in the annotation window to add at least one class.",
             }
 
         dataset_dir = self._next_unique_dir(self.datasets_root, self.dataset_name)
