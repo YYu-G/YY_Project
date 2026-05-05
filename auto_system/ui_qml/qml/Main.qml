@@ -12,9 +12,13 @@ ApplicationWindow {
     color: "#f4f6fb"
 
     property string logText: ""
-    property string selectedXmlPath: defaultXmlPath
+    property string selectedXmlPath: ""
     property var datasetNames: []
     property var modelNames: []
+    palette.windowText: "#0f172a"
+    palette.text: "#0f172a"
+    palette.buttonText: "#0f172a"
+    palette.placeholderText: "#475569"
 
     component AppButton: Button {
         id: btn
@@ -79,6 +83,182 @@ ApplicationWindow {
         }
     }
 
+    component LightComboBox: ComboBox {
+        id: control
+        implicitHeight: 44
+        font.pixelSize: 16
+        palette.text: "#0f172a"
+        palette.buttonText: "#0f172a"
+        palette.button: "#ffffff"
+        palette.base: "#ffffff"
+
+        contentItem: Text {
+            text: control.displayText
+            color: control.enabled ? "#0f172a" : "#64748b"
+            font: control.font
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            leftPadding: 14
+            rightPadding: 42
+        }
+
+        indicator: Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            text: control.popup.visible ? "▲" : "▼"
+            color: control.enabled ? "#334155" : "#94a3b8"
+            font.pixelSize: 16
+            font.bold: true
+        }
+
+        background: Rectangle {
+            implicitHeight: 44
+            radius: 8
+            color: control.enabled ? "#ffffff" : "#f1f5f9"
+            border.width: 1
+            border.color: control.activeFocus ? "#334155" : "#cfd8e3"
+        }
+
+        delegate: ItemDelegate {
+            width: control.width
+            height: 38
+            highlighted: control.highlightedIndex === index
+            contentItem: Text {
+                text: modelData
+                color: "#0f172a"
+                font: control.font
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+            background: Rectangle {
+                color: highlighted ? "#e8eef7" : "#ffffff"
+            }
+        }
+
+        popup: Popup {
+            y: control.height + 2
+            width: control.width
+            implicitHeight: Math.min(contentItem.implicitHeight, 260)
+            padding: 1
+
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: control.popup.visible ? control.delegateModel : null
+                currentIndex: control.highlightedIndex
+            }
+
+            background: Rectangle {
+                color: "#ffffff"
+                radius: 8
+                border.width: 1
+                border.color: "#cfd8e3"
+            }
+        }
+    }
+
+    component LightSpinBox: SpinBox {
+        id: control
+        implicitWidth: 210
+        implicitHeight: 44
+        font.pixelSize: 18
+        palette.text: "#0f172a"
+        palette.buttonText: "#0f172a"
+        palette.button: "#ffffff"
+        palette.base: "#ffffff"
+
+        contentItem: TextInput {
+            z: 2
+            text: control.textFromValue(control.value, control.locale)
+            font: control.font
+            color: "#0f172a"
+            selectionColor: "#bfdbfe"
+            selectedTextColor: "#0f172a"
+            horizontalAlignment: Qt.AlignHCenter
+            verticalAlignment: Qt.AlignVCenter
+            readOnly: !control.editable
+            validator: control.validator
+            inputMethodHints: Qt.ImhFormattedNumbersOnly
+        }
+
+        up.indicator: Rectangle {
+            x: control.mirrored ? 0 : parent.width - width
+            height: parent.height
+            implicitWidth: 52
+            color: control.up.pressed ? "#dbe5f3" : control.up.hovered ? "#eef3fb" : "#f8fafc"
+            border.width: 1
+            border.color: "#cfd8e3"
+            Text {
+                anchors.centerIn: parent
+                text: "+"
+                color: "#0f172a"
+                font.pixelSize: 22
+                font.bold: true
+            }
+        }
+
+        down.indicator: Rectangle {
+            x: control.mirrored ? parent.width - width : 0
+            height: parent.height
+            implicitWidth: 52
+            color: control.down.pressed ? "#dbe5f3" : control.down.hovered ? "#eef3fb" : "#f8fafc"
+            border.width: 1
+            border.color: "#cfd8e3"
+            Text {
+                anchors.centerIn: parent
+                text: "-"
+                color: "#0f172a"
+                font.pixelSize: 22
+                font.bold: true
+            }
+        }
+
+        background: Rectangle {
+            implicitWidth: 210
+            implicitHeight: 44
+            radius: 8
+            color: "#ffffff"
+            border.width: 1
+            border.color: control.activeFocus ? "#334155" : "#cfd8e3"
+        }
+    }
+
+    component LightCheckBox: CheckBox {
+        id: control
+        implicitHeight: 30
+        spacing: 10
+        font.pixelSize: 14
+
+        indicator: Rectangle {
+            x: 0
+            y: (control.height - height) / 2
+            implicitWidth: 22
+            implicitHeight: 22
+            radius: 4
+            color: control.checked ? "#dbeafe" : "#ffffff"
+            border.width: 2
+            border.color: control.checked ? "#2563eb" : "#cfd8e3"
+
+            Text {
+                anchors.centerIn: parent
+                text: "✓"
+                visible: control.checked
+                color: "#1d4ed8"
+                font.pixelSize: 16
+                font.bold: true
+            }
+        }
+
+        contentItem: Text {
+            text: control.text
+            color: "#0f172a"
+            font: control.font
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: control.indicator.width + control.spacing
+        }
+    }
+
     function pageTitle(i) {
         if (i === 0) return "项目配置"
         if (i === 1) return "数据标注"
@@ -119,7 +299,7 @@ ApplicationWindow {
                 spacing: 14
 
                 Label { text: "车机智能测试"; font.pixelSize: 30; font.bold: true; color: "#0f172a" }
-                Label { text: "QML 架构原型"; color: "#64748b"; font.pixelSize: 14 }
+                Label { text: "QML 架构原型"; color: "#334155"; font.pixelSize: 14 }
 
                 Repeater {
                     model: ["项目配置", "数据标注", "模型训练", "流程执行", "结果中心"]
@@ -145,7 +325,7 @@ ApplicationWindow {
                 }
 
                 Item { Layout.fillHeight: true }
-                Label { text: "提示：左侧导航切换模块"; color: "#64748b"; wrapMode: Text.Wrap }
+                Label { text: "提示：左侧导航切换模块"; color: "#334155"; wrapMode: Text.Wrap }
             }
         }
 
@@ -174,7 +354,7 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Label { text: pageTitle(nav.currentIndex); font.pixelSize: 34; font.bold: true; color: "#0f172a" }
-                            Label { text: pageDesc(nav.currentIndex); color: "#64748b"; font.pixelSize: 22 }
+                            Label { text: pageDesc(nav.currentIndex); color: "#334155"; font.pixelSize: 22 }
                         }
 
                         Rectangle {
@@ -207,7 +387,7 @@ ApplicationWindow {
                         Label { text: "任务状态："; color: "#334155"; font.pixelSize: 16 }
                         Label { text: appController.statusText; color: "#0f172a"; font.bold: true; font.pixelSize: 16 }
                         Item { Layout.fillWidth: true }
-                        Label { text: appController.summaryText; color: "#475569"; font.pixelSize: 14 }
+                        Label { text: appController.summaryText; color: "#334155"; font.pixelSize: 14 }
                     }
                 }
 
@@ -245,11 +425,11 @@ ApplicationWindow {
                                 columns: 2
                                 columnSpacing: 10
                                 rowSpacing: 10
-                                Label { text: "数据集目录"; font.pixelSize: 22 }
+                                Label { text: "数据集目录"; font.pixelSize: 22; color: "#0f172a" }
                                 Label { text: appController.datasetsRoot; font.pixelSize: 20; color: "#334155" }
-                                Label { text: "模型目录"; font.pixelSize: 22 }
+                                Label { text: "模型目录"; font.pixelSize: 22; color: "#0f172a" }
                                 Label { text: appController.modelsRoot; font.pixelSize: 20; color: "#334155" }
-                                Label { text: "流程报告目录"; font.pixelSize: 22 }
+                                Label { text: "流程报告目录"; font.pixelSize: 22; color: "#0f172a" }
                                 Label { text: "auto_system/test/reports"; font.pixelSize: 20; color: "#334155" }
                             }
                         }
@@ -280,7 +460,7 @@ ApplicationWindow {
                                         rowSpacing: 10
                                         Layout.fillWidth: true
 
-                                        Label { text: "素材目录"; font.pixelSize: 22 }
+                                        Label { text: "素材目录"; font.pixelSize: 22; color: "#0f172a" }
                                         Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 44
@@ -294,6 +474,7 @@ ApplicationWindow {
                                                 anchors.fill: parent
                                                 anchors.margins: 2
                                                 text: "auto_system/images"
+                                                color: "#0f172a"
                                                 font.pixelSize: 20
                                                 leftPadding: 10
                                                 rightPadding: 96
@@ -329,7 +510,7 @@ ApplicationWindow {
                                             }
                                         }
 
-                                        Label { text: "数据集名称"; font.pixelSize: 22 }
+                                        Label { text: "数据集名称"; font.pixelSize: 22; color: "#0f172a" }
                                         Rectangle {
                                             Layout.preferredWidth: 320
                                             Layout.preferredHeight: 44
@@ -342,6 +523,7 @@ ApplicationWindow {
                                                 anchors.fill: parent
                                                 anchors.margins: 2
                                                 text: "qml_dataset"
+                                                color: "#0f172a"
                                                 font.pixelSize: 20
                                                 leftPadding: 10
                                                 rightPadding: 10
@@ -382,7 +564,7 @@ ApplicationWindow {
 
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        CheckBox { id: skipUnlabeled; text: "跳过未标注图片"; checked: false }
+                                        LightCheckBox { id: skipUnlabeled; text: "跳过未标注图片"; checked: false }
                                         Item { Layout.fillWidth: true }
                                     }
                                 }
@@ -401,7 +583,7 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     anchors.margins: 10
                                     text: "说明：点击“开始标注并构建数据集”后将打开标注窗口。若名称已存在会提示重名。"
-                                    color: "#475569"
+                                    color: "#334155"
                                     font.pixelSize: 14
                                     wrapMode: Text.Wrap
                                 }
@@ -415,8 +597,8 @@ ApplicationWindow {
                                 columns: 3
                                 columnSpacing: 10
                                 rowSpacing: 10
-                                Label { text: "数据集选择"; font.pixelSize: 22 }
-                                ComboBox {
+                                Label { text: "数据集选择"; font.pixelSize: 22; color: "#0f172a" }
+                                LightComboBox {
                                     id: datasetCombo
                                     model: datasetNames
                                     Layout.fillWidth: true
@@ -424,8 +606,8 @@ ApplicationWindow {
                                 }
                                 GhostButton { text: "刷新列表"; onClicked: appController.refreshAssetLists() }
 
-                                Label { text: "初始权重"; font.pixelSize: 22 }
-                                ComboBox {
+                                Label { text: "初始权重"; font.pixelSize: 22; color: "#0f172a" }
+                                LightComboBox {
                                     id: modelCombo
                                     model: modelNames
                                     Layout.fillWidth: true
@@ -433,19 +615,19 @@ ApplicationWindow {
                                 }
                                 GhostButton { text: "刷新列表"; onClicked: appController.refreshAssetLists() }
 
-                                Label { text: "Epochs"; font.pixelSize: 22 }
-                                SpinBox { id: epochs; value: 20; from: 1; to: 3000 }
+                                Label { text: "Epochs"; font.pixelSize: 22; color: "#0f172a" }
+                                LightSpinBox { id: epochs; value: 20; from: 1; to: 3000 }
                                 Item {}
 
-                                Label { text: "ImgSz"; font.pixelSize: 22 }
-                                SpinBox { id: imgsz; value: 640; from: 64; to: 2048 }
+                                Label { text: "ImgSz"; font.pixelSize: 22; color: "#0f172a" }
+                                LightSpinBox { id: imgsz; value: 640; from: 64; to: 2048 }
                                 Item {}
 
-                                Label { text: "Batch"; font.pixelSize: 22 }
-                                SpinBox { id: batch; value: 8; from: 1; to: 256 }
+                                Label { text: "Batch"; font.pixelSize: 22; color: "#0f172a" }
+                                LightSpinBox { id: batch; value: 8; from: 1; to: 256 }
                                 Item {}
 
-                                Label { text: "模型名称"; font.pixelSize: 22 }
+                                Label { text: "模型名称"; font.pixelSize: 22; color: "#0f172a" }
                                 Rectangle {
                                     Layout.preferredWidth: 320
                                     Layout.preferredHeight: 44
@@ -458,6 +640,7 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 2
                                         text: "my_model"
+                                        color: "#0f172a"
                                         font.pixelSize: 20
                                         leftPadding: 10
                                         rightPadding: 10
@@ -485,44 +668,55 @@ ApplicationWindow {
                                 columns: 2
                                 columnSpacing: 10
                                 rowSpacing: 10
-                                Label { text: "XML 文件"; font.pixelSize: 22 }
-                                Rectangle {
+                                Label { text: "XML 文件"; font.pixelSize: 22; color: "#0f172a" }
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 44
-                                    radius: 10
-                                    color: "#ffffff"
-                                    border.color: "#cfd8e3"
-                                    border.width: 1
-                                    TextField {
-                                        text: selectedXmlPath
-                                        anchors.fill: parent
-                                        anchors.margins: 2
-                                        font.pixelSize: 20
-                                        readOnly: true
-                                        leftPadding: 10
-                                        rightPadding: 10
-                                        background: Rectangle { color: "transparent"; border.width: 0 }
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 44
+                                        radius: 10
+                                        color: "#ffffff"
+                                        border.color: "#cfd8e3"
+                                        border.width: 1
+                                        TextField {
+                                            id: xmlPathField
+                                            text: selectedXmlPath
+                                            anchors.fill: parent
+                                            anchors.margins: 2
+                                            color: "#0f172a"
+                                            placeholderText: "请选择 XML 脚本文件"
+                                            font.pixelSize: 20
+                                            readOnly: true
+                                            selectByMouse: true
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            background: Rectangle { color: "transparent"; border.width: 0 }
+                                        }
+                                    }
+                                    GhostButton {
+                                        text: "选择文件"
+                                        onClicked: xmlDialog.open()
                                     }
                                 }
 
-                                Label { text: "模型选择"; font.pixelSize: 22 }
-                                ComboBox {
+                                Label { text: "模型选择"; font.pixelSize: 22; color: "#0f172a" }
+                                LightComboBox {
                                     id: processModelCombo
                                     model: modelNames
                                     Layout.fillWidth: true
                                     enabled: modelNames.length > 0
                                 }
-                                Label { text: "执行选项"; font.pixelSize: 22 }
+                                Label { text: "执行选项"; font.pixelSize: 22; color: "#0f172a" }
                                 RowLayout {
                                     GhostButton { text: "刷新模型"; onClicked: appController.refreshAssetLists() }
-                                    CheckBox { id: simulateBox; text: "模拟模式"; checked: true }
+                                    LightCheckBox { id: simulateBox; text: "模拟模式"; checked: true }
                                 }
                             }
 
                             RowLayout {
                                 AppButton {
                                     text: "运行流程"
-                                    enabled: !appController.busy
+                                    enabled: !appController.busy && selectedXmlPath.length > 0
                                     onClicked: appController.runProcessFlow(
                                         selectedXmlPath,
                                         processModelCombo.currentIndex >= 0 ? appController.resolveModelPath(modelNames[processModelCombo.currentIndex]) : "",
@@ -553,60 +747,126 @@ ApplicationWindow {
                                 }
                                 Label {
                                     text: appController.outputDir.length > 0 ? ("输出目录: " + appController.outputDir) : "输出目录: -"
-                                    color: "#475569"
+                                    color: "#334155"
                                     font.pixelSize: 14
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
                             }
-                            Label { text: "最近任务历史（最近10条）"; font.pixelSize: 16; color: "#334155" }
-                            TextArea {
-                                id: historyBox
+                            Label { text: "最近任务历史（最近10条）"; font.pixelSize: 16; color: "#0f172a" }
+                            Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 120
-                                readOnly: true
-                                wrapMode: TextArea.Wrap
-                                text: appController.historyText
-                                font.family: "Consolas"
-                                font.pixelSize: 13
+                                radius: 8
+                                color: "#ffffff"
+                                border.color: "#d7e0ec"
+
+                                Flickable {
+                                    id: historyFlick
+                                    anchors.fill: parent
+                                    anchors.margins: 8
+                                    clip: true
+                                    contentWidth: Math.max(width, historyMetrics.width + 16)
+                                    contentHeight: Math.max(height, historyBox.contentHeight + 4)
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                    TextMetrics {
+                                        id: historyMetrics
+                                        font: historyBox.font
+                                        text: historyBox.text
+                                    }
+
+                                    TextEdit {
+                                        id: historyBox
+                                        width: historyFlick.contentWidth
+                                        height: Math.max(historyFlick.height, contentHeight + 4)
+                                        readOnly: true
+                                        selectByMouse: true
+                                        wrapMode: TextEdit.NoWrap
+                                        text: appController.historyText
+                                        color: "#0f172a"
+                                        font.family: "Consolas"
+                                        font.pixelSize: 13
+                                    }
+                                }
                             }
-                            TextArea {
-                                id: resultBox
+                            Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 300
-                                wrapMode: TextArea.NoWrap
-                                readOnly: true
-                                font.family: "Consolas"
-                                font.pixelSize: 16
-                                placeholderText: "结果 JSON"
+                                radius: 8
+                                color: "#ffffff"
+                                border.color: "#d7e0ec"
+
+                                Flickable {
+                                    id: resultFlick
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    clip: true
+                                    contentWidth: Math.max(width, resultMetrics.width + 16)
+                                    contentHeight: Math.max(height, resultBox.contentHeight + 4)
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                    TextMetrics {
+                                        id: resultMetrics
+                                        font: resultBox.font
+                                        text: resultBox.text
+                                    }
+
+                                    TextEdit {
+                                        id: resultBox
+                                        width: resultFlick.contentWidth
+                                        height: Math.max(resultFlick.height, contentHeight + 4)
+                                        wrapMode: TextEdit.NoWrap
+                                        readOnly: true
+                                        selectByMouse: true
+                                        font.family: "Consolas"
+                                        font.pixelSize: 16
+                                        color: "#0f172a"
+                                        text: ""
+                                    }
+                                }
                             }
                         }
                         }
                     }
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 160
-                    radius: 14
-                    color: "#0b1736"
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 160
+                        radius: 14
+                        color: "#0b1736"
 
-                    ScrollView {
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        TextArea {
-                            id: logArea
-                            readOnly: true
-                            color: "#dbeafe"
-                            font.family: "Consolas"
-                            font.pixelSize: 16
-                            wrapMode: TextArea.Wrap
-                            text: root.logText
-                            background: null
+                        Flickable {
+                            id: logFlick
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            clip: true
+                            contentWidth: width
+                            contentHeight: Math.max(height, logArea.contentHeight + 4)
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            TextEdit {
+                                id: logArea
+                                width: logFlick.width
+                                height: Math.max(logFlick.height, contentHeight + 4)
+                                readOnly: true
+                                selectByMouse: true
+                                color: "#dbeafe"
+                                font.family: "Consolas"
+                                font.pixelSize: 16
+                                wrapMode: TextEdit.Wrap
+                                text: root.logText
+                            }
                         }
                     }
                 }
-            }
         }
     }
 
@@ -622,7 +882,9 @@ ApplicationWindow {
         id: xmlDialog
         title: "选择 XML 文件"
         nameFilters: ["XML files (*.xml)", "All files (*)"]
-        onAccepted: selectedXmlPath = normalizePathForWindows(selectedFile.toString())
+        onAccepted: {
+            selectedXmlPath = normalizePathForWindows(selectedFile.toString())
+        }
     }
 
     FileDialog {

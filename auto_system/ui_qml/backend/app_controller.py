@@ -156,10 +156,41 @@ class AppController(QObject):
                 return candidate
             idx += 1
 
+    def _model_run_name(self, model_path: Path) -> str:
+        if model_path.parent.name == "weights" and model_path.parent.parent != self._models_root:
+            return model_path.parent.parent.name
+        if model_path.parent != self._models_root:
+            return model_path.parent.name
+        return model_path.stem
+
+    def _model_checkpoint_label(self, model_path: Path) -> str:
+        name = model_path.name.lower()
+        if name == "best.pt":
+            return "最佳"
+        if name == "last.pt":
+            return "最后"
+        return model_path.stem
+
+    def _model_display_name(self, model_path: Path) -> str:
+        run_name = self._model_run_name(model_path)
+        checkpoint = self._model_checkpoint_label(model_path)
+        if model_path.parent == self._models_root and run_name == model_path.stem:
+            return model_path.name
+        return f"{run_name} / {checkpoint} ({model_path.name})"
+
+    def _model_sort_key(self, model_path: Path):
+        checkpoint_rank = {"best.pt": 0, "last.pt": 1}.get(model_path.name.lower(), 2)
+        run_dir = model_path.parent.parent if model_path.parent.name == "weights" else model_path.parent
+        try:
+            modified = run_dir.stat().st_mtime
+        except OSError:
+            modified = 0
+        return (-modified, self._model_run_name(model_path).lower(), checkpoint_rank, model_path.name.lower())
+
     @Slot()
     def refreshAssetLists(self) -> None:
         datasets = []
-        models = []
+        model_entries = []
         self._dataset_name_map = {}
         self._model_name_map = {}
         if self._datasets_root.exists():
@@ -171,14 +202,24 @@ class AppController(QObject):
                 datasets.append(display)
         if self._models_root.exists():
             for p in self._models_root.rglob("*.pt"):
+                try:
+                    relative_parts = p.relative_to(self._models_root).parts
+                except ValueError:
+                    relative_parts = ()
+                if relative_parts and relative_parts[0] == "runs":
+                    continue
                 resolved = str(p.resolve())
-                display = p.name
-                hint = p.parent.name
+                display = self._model_display_name(p)
+                try:
+                    hint = str(p.relative_to(self._models_root))
+                except ValueError:
+                    hint = str(p)
                 display = self._make_unique_name(display, self._model_name_map, hint)
                 self._model_name_map[display] = resolved
-                models.append(display)
+                model_entries.append((self._model_sort_key(p), display))
         datasets.sort(reverse=True)
-        models.sort(reverse=True)
+        model_entries.sort(key=lambda item: item[0])
+        models = [display for _, display in model_entries]
         self._dataset_items = datasets
         self._model_items = models
         self._update_dataset_text()
@@ -201,6 +242,14 @@ class AppController(QObject):
             self._emit_log(f"{kind}重名：{name} 已存在，请更换名称。")
             return False
         return True
+
+    def _resolve_classes_file(self, classes_file: str) -> Optional[str]:
+        normalized = self.normalizePath(classes_file)
+        if normalized:
+            return normalized
+
+        self._emit_log("未选择类别文件，将以空类别启动标注。可在标注窗口按 n 新增类别。")
+        return None
 
     @Slot(str, result=str)
     def normalizePath(self, value: str) -> str:
@@ -305,7 +354,7 @@ class AppController(QObject):
                 )
                 result: Dict[str, Any] = controller.create_dataset_with_annotation(
                     raw_image_dir=self.normalizePath(raw_dir),
-                    classes_file=self.normalizePath(classes_file) or None,
+                    classes_file=self._resolve_classes_file(classes_file),
                     skip_unlabeled=skip_unlabeled,
                 )
                 elapsed = time.time() - started
