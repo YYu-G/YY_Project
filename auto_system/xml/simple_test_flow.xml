@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CarTestFlow name="Page Image Navigation Test Flow" version="1.0">
+  <ImageResources>
+    <Image id="page1" className="page1" path="../case/page1.png" description="page1 initial page" />
+    <Image id="page2" className="page2" path="../case/page2.png" description="page2 target page" />
+    <Image id="home" className="home" path="../case/home.png" description="home icon" />
+    <Image id="music" className="music" path="../case/music.png" description="music icon" />
+  </ImageResources>
+
+  <TestCase id="TC_IMAGE_NAV_001" name="页面图片导航测试">
+    <Description>在 page1 点击 home 后应跳转到 page2；在 page2 点击 music 页面不变；再点击 home 页面仍不变。</Description>
+    <Steps>
+      <Loop times="3" name="页面导航循环">
+        <Step id="${iteration}.1" name="第 ${iteration} 轮：确认初始页面为 page1">
+          <Action type="wait" duration="800" />
+          <Assert type="verify_page" pageName="page1" pageImageId="page1" timeout="5000" />
+          <Assert type="verify_image" imageId="home" onPageImageId="page1" timeout="3000" expectedState="visible" />
+        </Step>
+
+        <Step id="${iteration}.2" name="第 ${iteration} 轮：在 page1 点击 home 并跳转到 page2">
+          <Action type="click_image" imageId="home" onPageImageId="page1" />
+          <Action type="wait" duration="1000" />
+          <Assert type="verify_page" pageName="page2" pageImageId="page2" timeout="5000" />
+          <Assert type="verify_image" imageId="page1" timeout="3000" expectedState="hidden" />
+        </Step>
+
+        <Step id="${iteration}.3" name="第 ${iteration} 轮：在 page2 点击 music 页面保持不变">
+          <Action type="click_image" imageId="music" onPageImageId="page2" />
+          <Action type="wait" duration="800" />
+          <Assert type="verify_page" pageName="page2" pageImageId="page2" timeout="5000" />
+        </Step>
+
+        <Step id="${iteration}.4" name="第 ${iteration} 轮：在 page2 点击 home 页面保持不变">
+          <Action type="click_image" imageId="home" onPageImageId="page2" />
+          <Action type="wait" duration="800" />
+          <Assert type="verify_page" pageName="page2" pageImageId="page2" timeout="5000" />
+        </Step>
+      </Loop>
+    </Steps>
+  </TestCase>
+</CarTestFlow>

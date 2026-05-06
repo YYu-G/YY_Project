@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CarTestFlow name="Car HMI Test Flow Template" version="1.0">
   <ImageResources>
-    <Image id="home_icon" path="./images/home.png" description="Home icon" />
-    <Image id="ac_icon" path="./images/ac.png" description="AC icon" />
-    <Image id="ac_panel" path="./images/ac_panel.png" description="AC panel" />
-    <Image id="temp_up" path="./images/temp_up.png" description="Temperature up" />
+    <Image id="home_icon" className="home" path="./images/home.png" description="Home icon" />
+    <Image id="ac_icon" className="ac" path="./images/ac.png" description="AC icon" />
+    <Image id="ac_panel" className="ac_panel" path="./images/ac_panel.png" description="AC panel" />
+    <Image id="temp_up" className="temp_up" path="./images/temp_up.png" description="Temperature up" />
   </ImageResources>
 
   <TestCase id="TC_TEMPLATE_001" name="Template test case">

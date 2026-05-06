@@ -30,6 +30,7 @@ class AdbController:
         self.screen_source = "adb"
         self.model_controller = None
         self.image_resources: Dict[str, Dict[str, str]] = {}
+        self.image_resource_base_dir: Optional[Path] = None
         self._device_size_cache: Optional[Tuple[int, int]] = None
 
         # Mock state for assert simulation.
@@ -40,8 +41,13 @@ class AdbController:
     def set_model_controller(self, model_controller: Any) -> None:
         self.model_controller = model_controller
 
-    def set_image_resources(self, image_resources: Dict[str, Dict[str, str]]) -> None:
+    def set_image_resources(
+        self,
+        image_resources: Dict[str, Dict[str, str]],
+        base_dir: Optional[str] = None,
+    ) -> None:
         self.image_resources = image_resources or {}
+        self.image_resource_base_dir = Path(base_dir).resolve() if base_dir else None
 
     def set_screen_source(self, screen_source: str) -> None:
         value = str(screen_source or "adb").strip().lower()
@@ -231,10 +237,6 @@ class AdbController:
         image_positions: Optional[Dict[str, Tuple[int, int]]] = None,
         on_page_image_id: str = "",
     ) -> bool:
-        if self.model_controller is None:
-            print("[DETECT] click_image failed: model_controller is required for image operations.")
-            return False
-
         detection_bundle = self._detect_target(image_id=image_id, on_page_image_id=on_page_image_id)
         if detection_bundle is not None:
             target = detection_bundle["target"]
@@ -260,7 +262,7 @@ class AdbController:
             )
             return self.adb_tap(tap_x, tap_y)
         print(
-            f"[DETECT] click_image '{image_id}' not found by model."
+            f"[DETECT] click_image '{image_id}' not found."
             + (f" page='{on_page_image_id}'" if on_page_image_id else "")
         )
         return False
@@ -281,10 +283,6 @@ class AdbController:
         timeout: int = 5000,
         on_page_image_id: str = "",
     ) -> bool:
-        if self.model_controller is None:
-            print("[ASSERT] verify_image failed: model_controller is required for image operations.")
-            return False
-
         found = self._wait_model_detect(
             image_id=image_id,
             timeout=timeout,
@@ -365,19 +363,17 @@ class AdbController:
         image_id: str,
         on_page_image_id: str = "",
     ) -> Optional[Dict[str, Any]]:
-        if self.model_controller is None:
-            return None
         screen_path = self._capture_for_detection()
         if not screen_path:
             return None
-        detections = self._infer_screen_detections(screen_path)
-        if not detections:
-            return None
+        detections = self._infer_screen_detections(screen_path) if self.model_controller is not None else []
 
         page_detection: Optional[Dict[str, Any]] = None
         if on_page_image_id:
             page_labels = self._build_target_labels(on_page_image_id)
             page_detection = self._pick_best_detection(detections, page_labels, region=None)
+            if page_detection is None:
+                page_detection = self._match_image_resource(screen_path, on_page_image_id, region=None)
             if page_detection is None:
                 return None
 
@@ -385,12 +381,130 @@ class AdbController:
         region = page_detection.get("bbox") if page_detection else None
         target_detection = self._pick_best_detection(detections, labels, region=region)
         if target_detection is None:
+            target_detection = self._match_image_resource(screen_path, image_id, region=region)
+        if target_detection is None:
             return None
 
         return {
             "target": target_detection,
             "page": page_detection,
             "screen_size": self._read_image_size(screen_path),
+        }
+
+    def _resolve_image_resource_path(self, image_id: str) -> Optional[Path]:
+        resource = self.image_resources.get(image_id, {}) or {}
+        raw_path = str(resource.get("path", "")).strip()
+        if not raw_path:
+            return None
+        path = Path(raw_path)
+        candidates = []
+        if path.is_absolute():
+            candidates.append(path)
+        else:
+            if self.image_resource_base_dir is not None:
+                candidates.append(self.image_resource_base_dir / path)
+            candidates.append(Path.cwd() / path)
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                resolved = candidate
+            if resolved.exists():
+                return resolved
+        return None
+
+    def _template_scales(self, search_w: int, search_h: int, template_w: int, template_h: int) -> List[float]:
+        base_scales = [1.0, 0.95, 1.05, 0.9, 1.1, 0.85, 1.15, 0.8, 1.2, 0.75, 1.25, 0.7, 1.3]
+        scales: List[float] = []
+        for scale in base_scales:
+            w = int(template_w * scale)
+            h = int(template_h * scale)
+            if w < 8 or h < 8 or w > search_w or h > search_h:
+                continue
+            if scale not in scales:
+                scales.append(scale)
+        return scales
+
+    def _match_image_resource(
+        self,
+        screen_path: Path,
+        image_id: str,
+        region: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        template_path = self._resolve_image_resource_path(image_id)
+        if template_path is None:
+            return None
+        try:
+            import cv2
+        except ImportError:
+            print("[DETECT] template matching requires opencv-python.")
+            return None
+
+        screen = cv2.imread(str(screen_path), cv2.IMREAD_COLOR)
+        template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+        if screen is None or template is None:
+            return None
+
+        offset_x = 0
+        offset_y = 0
+        search = screen
+        if region is not None:
+            bbox = region or {}
+            x1 = max(int(bbox.get("x1", 0)), 0)
+            y1 = max(int(bbox.get("y1", 0)), 0)
+            x2 = min(int(bbox.get("x2", screen.shape[1])), screen.shape[1])
+            y2 = min(int(bbox.get("y2", screen.shape[0])), screen.shape[0])
+            if x2 <= x1 or y2 <= y1:
+                return None
+            search = screen[y1:y2, x1:x2]
+            offset_x = x1
+            offset_y = y1
+
+        search_gray = cv2.cvtColor(search, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        search_h, search_w = search_gray.shape[:2]
+        template_h, template_w = template_gray.shape[:2]
+        scales = self._template_scales(search_w, search_h, template_w, template_h)
+        if not scales:
+            return None
+
+        best_score = -1.0
+        best_loc = (0, 0)
+        best_size = (0, 0)
+        for scale in scales:
+            scaled_w = int(template_w * scale)
+            scaled_h = int(template_h * scale)
+            if scale == 1.0:
+                candidate = template_gray
+            else:
+                candidate = cv2.resize(template_gray, (scaled_w, scaled_h), interpolation=cv2.INTER_AREA)
+            result = cv2.matchTemplate(search_gray, candidate, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            if float(max_val) > best_score:
+                best_score = float(max_val)
+                best_loc = max_loc
+                best_size = (scaled_w, scaled_h)
+
+        area_ratio = (best_size[0] * best_size[1]) / float(max(search_w * search_h, 1))
+        threshold = 0.62 if area_ratio >= 0.25 else 0.72
+        if best_score < threshold:
+            return None
+
+        x1 = offset_x + int(best_loc[0])
+        y1 = offset_y + int(best_loc[1])
+        x2 = x1 + int(best_size[0])
+        y2 = y1 + int(best_size[1])
+        print(
+            f"[DETECT] template '{image_id}' -> {template_path.name} "
+            f"score={best_score:.3f} bbox=({x1},{y1},{x2},{y2})"
+        )
+        return {
+            "class_idx": -1,
+            "class_name": image_id,
+            "confidence": best_score,
+            "source": "template",
+            "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            "center": {"x": int((x1 + x2) / 2), "y": int((y1 + y2) / 2)},
         }
 
     def _infer_screen_detections(self, screen_path: Path) -> List[Dict[str, Any]]:
@@ -560,6 +674,11 @@ class AdbController:
         labels.append(image_id.replace("_page", ""))
 
         resource = self.image_resources.get(image_id, {})
+        for key in ("className", "class_name", "modelClass", "model_class", "label", "aliases"):
+            value = str(resource.get(key, "")).strip()
+            if value:
+                normalized = value.replace(";", ",").replace("|", ",")
+                labels.extend(part.strip() for part in normalized.split(","))
         img_path = resource.get("path", "")
         if img_path:
             labels.append(Path(img_path).stem)

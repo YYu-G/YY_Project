@@ -46,6 +46,11 @@ class ProcessParser:
             resources[image_id] = {
                 "id": image_id,
                 "path": image_elem.get("path", ""),
+                "className": image_elem.get("className", ""),
+                "class_name": image_elem.get("class_name", ""),
+                "modelClass": image_elem.get("modelClass", ""),
+                "label": image_elem.get("label", ""),
+                "aliases": image_elem.get("aliases", ""),
                 "description": image_elem.get("description", ""),
             }
         return resources

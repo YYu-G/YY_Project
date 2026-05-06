@@ -1,5 +1,7 @@
 ﻿import json
 import os
+import shutil
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -333,6 +335,88 @@ class AppController(QObject):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _query_adb_devices(self) -> Dict[str, Any]:
+        adb_path = shutil.which("adb")
+        if not adb_path:
+            return {
+                "success": False,
+                "task": "设备连接检测",
+                "adb_path": "",
+                "device_count": 0,
+                "devices": [],
+                "message": "未找到 adb，请确认 Android platform-tools 已安装并加入 PATH。",
+            }
+
+        completed = subprocess.run(
+            [adb_path, "devices"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=8,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        stdout = completed.stdout.strip()
+        stderr = completed.stderr.strip()
+        devices = []
+        for line in stdout.splitlines()[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                devices.append({"serial": parts[0], "status": parts[1]})
+
+        ready_devices = [d for d in devices if d.get("status") == "device"]
+        success = completed.returncode == 0 and bool(ready_devices)
+        message = "检测到可用设备。" if success else "未检测到可用设备，请检查连接、授权或车机调试模式。"
+        return {
+            "success": success,
+            "task": "设备连接检测",
+            "adb_path": adb_path,
+            "device_count": len(ready_devices),
+            "devices": devices,
+            "stdout": stdout,
+            "stderr": stderr,
+            "message": message,
+        }
+
+    @Slot()
+    def checkDeviceConnection(self) -> None:
+        if self._busy:
+            self._emit_log("已有任务在运行，请稍后再检测设备。")
+            return
+
+        def worker() -> None:
+            started = time.time()
+            self._set_busy(True)
+            self._set_status("设备检测中")
+            self._emit_log("开始检测 ADB 设备连接。")
+            try:
+                result = self._query_adb_devices()
+                elapsed = time.time() - started
+                result["duration_ms"] = int(elapsed * 1000)
+                text = json.dumps(result, ensure_ascii=False, indent=2)
+                self._last_result_text = text
+                self.resultChanged.emit(text)
+                self._set_summary(f"耗时 {elapsed:.2f}s | 设备 {result.get('device_count', 0)} 台可用")
+                self._set_status("设备检测完成" if result.get("success") else "设备未就绪")
+                self._emit_log(str(result.get("message", "设备检测完成。")))
+            except Exception as e:
+                elapsed = time.time() - started
+                result = {"success": False, "task": "设备连接检测", "error": str(e)}
+                text = json.dumps(result, ensure_ascii=False, indent=2)
+                self._last_result_text = text
+                self.resultChanged.emit(text)
+                self._set_summary(f"耗时 {elapsed:.2f}s | 设备检测失败")
+                self._set_status("设备检测失败")
+                self._emit_log(f"设备检测失败：{e}")
+            finally:
+                self._set_busy(False)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     @Slot(str, str, str, bool)
     def buildDataset(self, raw_dir: str, classes_file: str, dataset_name: str, skip_unlabeled: bool) -> None:
         if self._busy:
@@ -482,6 +566,14 @@ class AppController(QObject):
         self._save_history()
         self.historyChanged.emit()
         self._emit_log("已清空任务历史。")
+
+    @Slot()
+    def clearResult(self) -> None:
+        self._last_result_text = ""
+        self.resultChanged.emit("")
+        self._set_summary("-")
+        self._set_output_dir("")
+        self._emit_log("已清空当前结果。")
 
     @Slot()
     def exportReport(self) -> None:

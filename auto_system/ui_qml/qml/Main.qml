@@ -724,7 +724,11 @@ ApplicationWindow {
                                         true
                                     )
                                 }
-                                GhostButton { text: "清空结果"; onClicked: resultBox.text = "" }
+                                GhostButton {
+                                    text: "检测设备"
+                                    enabled: !appController.busy
+                                    onClicked: appController.checkDeviceConnection()
+                                }
                             }
                         }
 
@@ -740,6 +744,10 @@ ApplicationWindow {
                                 GhostButton {
                                     text: "导出报告"
                                     onClicked: appController.exportReport()
+                                }
+                                GhostButton {
+                                    text: "清空结果"
+                                    onClicked: appController.clearResult()
                                 }
                                 DangerButton {
                                     text: "清空历史"

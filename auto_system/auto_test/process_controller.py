@@ -52,7 +52,10 @@ class ProcessController:
     def run(self, xml_path: str) -> Dict[str, Any]:
         started_at = time.time()
         flow = self.parser.parse_xml(xml_path)
-        self.executor.set_image_resources(flow.get("image_resources", {}))
+        self.executor.set_image_resources(
+            flow.get("image_resources", {}),
+            base_dir=str(Path(xml_path).resolve().parent),
+        )
 
         result: Dict[str, Any] = {
             "success": True,
