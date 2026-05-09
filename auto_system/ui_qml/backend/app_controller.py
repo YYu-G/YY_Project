@@ -235,6 +235,44 @@ class AppController(QObject):
     def resolveModelPath(self, display_name: str) -> str:
         return self._model_name_map.get((display_name or "").strip(), "")
 
+    @Slot(str, result=int)
+    def datasetTrainImageCount(self, dataset_yaml: str) -> int:
+        yaml_path = Path(self.normalizePath(dataset_yaml))
+        if not yaml_path.exists():
+            return 0
+        dataset_root = yaml_path.parent
+
+        # Prefer common YOLO layout: <dataset>/images/train
+        train_dir = dataset_root / "images" / "train"
+        if train_dir.exists():
+            return sum(1 for p in train_dir.rglob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"})
+
+        # Fallback: parse `train:` line in dataset.yaml
+        try:
+            train_value = ""
+            for raw in yaml_path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if line.startswith("train:"):
+                    train_value = line.split(":", 1)[1].strip().strip("'\"")
+                    break
+            if not train_value:
+                return 0
+            train_path = Path(train_value)
+            if not train_path.is_absolute():
+                train_path = (dataset_root / train_path).resolve()
+            if train_path.is_file():
+                # train.txt listing image paths
+                count = 0
+                for raw in train_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    if raw.strip():
+                        count += 1
+                return count
+            if train_path.is_dir():
+                return sum(1 for p in train_path.rglob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"})
+        except Exception:
+            return 0
+        return 0
+
     def _check_name_conflict(self, target_root: Path, target_name: str, kind: str) -> bool:
         name = (target_name or "").strip()
         if not name:
