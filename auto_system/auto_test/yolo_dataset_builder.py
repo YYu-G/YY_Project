@@ -8,6 +8,7 @@ try:
 except ImportError:
     yaml = None
 
+import cv2
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 
@@ -20,6 +21,20 @@ def collect_image_files(raw_image_dir: str) -> List[Path]:
     images = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
     images.sort()
     return images
+
+
+def _expand_samples_to_at_least(samples: List[Dict], min_count: int = 30) -> List[Dict]:
+    """
+    扩充样本，直到总数 >= min_count
+    """
+    expanded = samples.copy()
+    while len(expanded) < min_count:
+        # 循环复制原样本，直到够数
+        for s in samples:
+            expanded.append(s.copy())
+            if len(expanded) >= min_count:
+                break
+    return expanded
 
 
 def _split_samples(
@@ -49,11 +64,9 @@ def _ensure_dataset_dirs(dataset_dir: Path):
 
 
 def _write_yolo_label(label_path: Path, image_path: Path, annotations: List[Dict]):
-    import cv2
-
     image = cv2.imread(str(image_path))
     if image is None:
-        raise ValueError(f"Failed to read image for label export: {image_path}")
+        raise ValueError(f"Failed to read image: {image_path}")
     h, w = image.shape[:2]
 
     lines = []
@@ -77,53 +90,78 @@ def build_yolo_dataset(
     val_ratio: float = 0.2,
     test_ratio: float = 0.1,
     seed: int = 42,
+    min_total_samples: int = 30,  # 最少 30 张
 ) -> Dict:
-    dataset_path = Path(dataset_dir)
-    _ensure_dataset_dirs(dataset_path)
+    try:
+        dataset_path = Path(dataset_dir)
+        _ensure_dataset_dirs(dataset_path)
 
-    train_samples, val_samples, test_samples = _split_samples(
-        samples, train_ratio, val_ratio, test_ratio, seed
-    )
-    split_map = {"train": train_samples, "val": val_samples, "test": test_samples}
+        origin_total = len(samples)
+        # ============== 核心修改 ==============
+        samples = _expand_samples_to_at_least(samples, min_total_samples)
+        expanded_total = len(samples)
 
-    for split, split_samples in split_map.items():
-        for sample in split_samples:
-            source_image = Path(sample["image_path"])
-            annotations = sample["annotations"]
+        # 划分训练集/验证集/测试集
+        train_samples, val_samples, test_samples = _split_samples(
+            samples, train_ratio, val_ratio, test_ratio, seed
+        )
 
-            dst_img = dataset_path / "images" / split / source_image.name
-            dst_lbl = dataset_path / "labels" / split / f"{source_image.stem}.txt"
+        split_map = {
+            "train": train_samples,
+            "val": val_samples,
+            "test": test_samples
+        }
 
-            shutil.copy2(source_image, dst_img)
-            _write_yolo_label(dst_lbl, source_image, annotations)
+        # 复制图片 + 生成标签
+        for split, split_samples in split_map.items():
+            for idx, sample in enumerate(split_samples):
+                src_img = Path(sample["image_path"])
+                anns = sample["annotations"]
 
-    yaml_path = dataset_path / "dataset.yaml"
-    yaml_data = {
-        "train": "images/train",
-        "val": "images/val",
-        "test": "images/test",
-        "nc": len(class_names),
-        "names": class_names,
-    }
-    with open(yaml_path, "w", encoding="utf-8") as f:
-        if yaml is not None:
-            yaml.safe_dump(yaml_data, f, sort_keys=False, allow_unicode=True)
-        else:
-            f.write("train: images/train\n")
-            f.write("val: images/val\n")
-            f.write("test: images/test\n")
-            f.write(f"nc: {yaml_data['nc']}\n")
-            f.write("names:\n")
-            for idx, name in enumerate(class_names):
-                f.write(f"  {idx}: {name}\n")
+                new_name = f"{src_img.stem}_dup{idx}{src_img.suffix}"
+                dst_img = dataset_path / "images" / split / new_name
+                dst_lbl = dataset_path / "labels" / split / f"{src_img.stem}_dup{idx}.txt"
 
-    return {
-        "dataset_dir": str(dataset_path),
-        "yaml_path": str(yaml_path),
-        "counts": {
-            "total": len(samples),
-            "train": len(train_samples),
-            "val": len(val_samples),
-            "test": len(test_samples),
-        },
-    }
+                shutil.copy2(src_img, dst_img)
+                _write_yolo_label(dst_lbl, src_img, anns)
+
+        # 生成 dataset.yaml
+        yaml_path = dataset_path / "dataset.yaml"
+        yaml_data = {
+            "train": "./images/train",
+            "val": "./images/val",
+            "test": "./images/test",
+            "nc": len(class_names),
+            "names": class_names,
+        }
+
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            if yaml:
+                yaml.safe_dump(yaml_data, f, sort_keys=False, allow_unicode=True)
+            else:
+                f.write("train: ./images/train\n")
+                f.write("val: ./images/val\n")
+                f.write("test: ./images/test\n")
+                f.write(f"nc: {len(class_names)}\n")
+                f.write("names:\n")
+                for i, name in enumerate(class_names):
+                    f.write(f"  {i}: {name}\n")
+
+        return {
+            "success": True,
+            "dataset_dir": str(dataset_path),
+            "yaml_path": str(yaml_path),
+            "origin_total": origin_total,
+            "expanded_total": expanded_total,
+            "counts": {
+                "train": len(train_samples),
+                "val": len(val_samples),
+                "test": len(test_samples)
+            }
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }

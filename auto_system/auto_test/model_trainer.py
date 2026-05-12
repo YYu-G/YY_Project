@@ -193,6 +193,28 @@ class ModelTrainer:
             project=str(self.models_root),
             name=run_name_unique,
             exist_ok=exist_ok,
+
+            mosaic=0.0,     # 关闭！小数据集必关
+            mixup=0.0,      # 关闭！
+            
+            hsv_h=0.0,
+            hsv_s=0.05,
+            hsv_v=0.05,
+            degrees=0.0,
+            translate=0.05,
+            scale=0.05,
+            fliplr=0.0,
+            flipud=0.0,
+
+            box=6.0,    # 定位稳定
+            cls=2.5,    # 分类更强 → 稀有类别置信度直接拉高
+            dfl=1.5,
+
+            # 学习率慢 → 训练更稳定
+            lr0=0.0005,
+            lrf=0.005,
+            
+            val=True
         )
 
         save_dir = Path(getattr(train_result, "save_dir", self.models_root / run_name_unique))

@@ -14,7 +14,7 @@ class ModelController:
     def __init__(
         self,
         model_path: Optional[str] = None,
-        conf: float = 0.25,
+        conf: float = 0.5,
         iou: float = 0.7,
         device: str = "cpu",
         dataset_name: str = "custom_dataset",
