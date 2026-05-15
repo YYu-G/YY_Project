@@ -41,11 +41,15 @@ class ModelController:
         raw_image_dir: str,
         class_names: Optional[List[str]] = None,
         classes_file: Optional[str] = None,
-        train_ratio: float = 0.7,
+        train_ratio: float = 0.8,
         val_ratio: float = 0.2,
-        test_ratio: float = 0.1,
+        test_ratio: float = 0.0,
         seed: int = 42,
         skip_unlabeled: bool = False,
+        min_train_samples: int = 30,
+        rare_class_names: Optional[List[str]] = None,
+        rare_multiplier: int = 3,
+        force_val_coverage: bool = True,
     ) -> Dict[str, Any]:
         return self.trainer.create_dataset_with_annotation(
             raw_image_dir=raw_image_dir,
@@ -56,6 +60,10 @@ class ModelController:
             test_ratio=test_ratio,
             seed=seed,
             skip_unlabeled=skip_unlabeled,
+            min_train_samples=min_train_samples,
+            rare_class_names=rare_class_names,
+            rare_multiplier=rare_multiplier,
+            force_val_coverage=force_val_coverage,
         )
 
     def train_model(
@@ -93,11 +101,15 @@ class ModelController:
         raw_image_dir: str,
         class_names: Optional[List[str]] = None,
         classes_file: Optional[str] = None,
-        train_ratio: float = 0.7,
+        train_ratio: float = 0.8,
         val_ratio: float = 0.2,
-        test_ratio: float = 0.1,
+        test_ratio: float = 0.0,
         seed: int = 42,
         skip_unlabeled: bool = False,
+        min_train_samples: int = 30,
+        rare_class_names: Optional[List[str]] = None,
+        rare_multiplier: int = 3,
+        force_val_coverage: bool = True,
         model_weights: str = "yolo11n.pt",
         epochs: int = 100,
         imgsz: int = 640,
@@ -117,6 +129,10 @@ class ModelController:
             test_ratio=test_ratio,
             seed=seed,
             skip_unlabeled=skip_unlabeled,
+            min_train_samples=min_train_samples,
+            rare_class_names=rare_class_names,
+            rare_multiplier=rare_multiplier,
+            force_val_coverage=force_val_coverage,
         )
         if not dataset_result.get("success"):
             return {

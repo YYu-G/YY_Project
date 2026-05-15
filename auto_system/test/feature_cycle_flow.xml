@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CarTestFlow name="Feature Cycle Flow" version="1.0">
+  <ImageResources>
+    <!-- Page anchors -->
+    <Image id="home_page" path="D:\uid02310\Desktop\sucai\page\home1.png" className="home" aliases="home,home_page" />
+    <Image id="music_page" path="D:\uid02310\Desktop\sucai\page\music2.png" className="musci" aliases="musci,music,music_page" />
+    <Image id="app_page" path="D:\uid02310\Desktop\sucai\page\appCenter.png" className="app" aliases="app,app_page,appCenter" />
+    <Image id="setting_page" path="D:\uid02310\Desktop\sucai\page\setting.png" className="setting" aliases="setting,setting_page" />
+
+    <!-- Buttons -->
+    <Image id="home_btn" path="D:\uid02310\Desktop\sucai\button\home_btn.png" className="home_btn" aliases="home_btn,home" />
+    <Image id="music_btn" path="D:\uid02310\Desktop\sucai\button\music_btn.png" className="music_btn" aliases="music_btn,musci,music" />
+    <Image id="app_btn" path="D:\uid02310\Desktop\sucai\button\appCenter_btn.png" className="app_btn" aliases="app_btn,app" />
+    <Image id="setting_btn" path="D:\uid02310\Desktop\sucai\button\setting_btn.png" className="setting_btn" aliases="setting_btn,setting" />
+  </ImageResources>
+
+  <TestCase id="TC_FEATURE_CYCLE_001" name="Enter each page and back home">
+    <Description>
+      循环3次：home -> music -> home(滑动) -> app -> home(滑动) -> setting -> home(滑动)
+    </Description>
+    <Steps>
+      <Loop times="3">
+        <Step id="1" name="Initial home">
+          <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+        </Step>
+
+        <Step id="2" name="Enter music">
+          <Action type="click_image" imageId="music_btn" onPageImageId="home_page" />
+          <Action type="wait" duration="1500" />
+          <Assert type="verify_image" imageId="music_page" expectedState="visible" timeout="5000" />
+        </Step>
+        <Step id="3" name="Back home from music">
+          <Action type="click_image" imageId="home_btn" onPageImageId="music_page" />
+          <Action type="wait" duration="1500" />
+          <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+          <Action type="swipe" startX="300" startY="540" endX="1600" endY="540" duration="500" />
+          <Action type="wait" duration="300" />
+        </Step>
+
+        <Step id="4" name="Enter appCenter">
+          <Action type="click_image" imageId="app_btn" onPageImageId="home_page" />
+          <Action type="wait" duration="1500" />
+          <Assert type="verify_image" imageId="app_page" expectedState="visible" timeout="5000" />
+        </Step>
+        <Step id="5" name="Back home from appCenter">
+          <Action type="click_image" imageId="home_btn" onPageImageId="app_page" />
+          <Action type="wait" duration="1500" />
+          <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+          <Action type="swipe" startX="300" startY="540" endX="1600" endY="540" duration="500" />
+          <Action type="wait" duration="300" />
+        </Step>
+
+        <Step id="6" name="Enter setting">
+          <Action type="click_image" imageId="setting_btn" onPageImageId="home_page" />
+          <Action type="wait" duration="1500" />
+          <Assert type="verify_image" imageId="setting_page" expectedState="visible" timeout="5000" />
+        </Step>
+        <Step id="7" name="Back home from setting">
+          <Action type="click_image" imageId="home_btn" />
+          <Action type="wait" duration="1500" />
+          <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+          <Action type="swipe" startX="300" startY="540" endX="1600" endY="540" duration="500" />
+          <Action type="wait" duration="300" />
+        </Step>
+
+      </Loop>
+    </Steps>
+  </TestCase>
+</CarTestFlow>

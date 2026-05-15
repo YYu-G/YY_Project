@@ -8,7 +8,7 @@
   </ImageResources>
 
   <TestCase id="TC_IMAGE_NAV_001" name="页面图片导航测试">
-    <Description>在 page1 点击 home 后应跳转到 page2；在 page2 点击 music 页面不变；再点击 home 页面仍不变。</Description>
+    <Description>在 page1 点击 home 后应跳转到 page2；在 page2 点击 music 和 home，页面都应保持在 page2。</Description>
     <Steps>
       <Loop times="3" name="页面导航循环">
         <Step id="${iteration}.1" name="第 ${iteration} 轮：确认初始页面为 page1">
@@ -24,13 +24,13 @@
           <Assert type="verify_image" imageId="page1" timeout="3000" expectedState="hidden" />
         </Step>
 
-        <Step id="${iteration}.3" name="第 ${iteration} 轮：在 page2 点击 music 页面保持不变">
+        <Step id="${iteration}.3" name="第 ${iteration} 轮：在 page2 点击 music 后页面保持不变">
           <Action type="click_image" imageId="music" onPageImageId="page2" />
           <Action type="wait" duration="800" />
           <Assert type="verify_page" pageName="page2" pageImageId="page2" timeout="5000" />
         </Step>
 
-        <Step id="${iteration}.4" name="第 ${iteration} 轮：在 page2 点击 home 页面保持不变">
+        <Step id="${iteration}.4" name="第 ${iteration} 轮：在 page2 点击 home 后页面保持不变">
           <Action type="click_image" imageId="home" onPageImageId="page2" />
           <Action type="wait" duration="800" />
           <Assert type="verify_page" pageName="page2" pageImageId="page2" timeout="5000" />

@@ -676,7 +676,7 @@ ApplicationWindow {
                                     id: descLabel
                                     anchors.fill: parent
                                     anchors.margins: 10
-                                    text: "说明：点击“开始标注并构建数据集”后将打开标注窗口。若名称已存在会提示重名。"
+                                    text: "说明：点击“开始标注并构建数据集”后将打开标注窗口。素材路径确保无中文。"
                                     color: "#334155"
                                     font.pixelSize: 14
                                     wrapMode: Text.Wrap
@@ -938,36 +938,59 @@ ApplicationWindow {
 
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 68
+                                Layout.preferredHeight: flowActionContent.implicitHeight + 24
                                 radius: 12
                                 color: "#f8fafc"
                                 border.color: "#e2e8f0"
                                 border.width: 1
-                                RowLayout {
+                                ColumnLayout {
+                                    id: flowActionContent
                                     anchors.fill: parent
                                     anchors.margins: 12
                                     spacing: 10
-                                    Label { text: "执行配置与操作"; font.pixelSize: 18; font.bold: true; color: "#0f172a" }
-                                    LightCheckBox { id: simulateBox; text: "模拟模式"; checked: true }
-                                    AppButton {
-                                        text: "运行流程"
-                                        enabled: !appController.busy && selectedXmlPath.length > 0
-                                        onClicked: appController.runProcessFlow(
-                                            selectedXmlPath,
-                                            processModelCombo.currentIndex >= 0 ? appController.resolveModelPath(modelNames[processModelCombo.currentIndex]) : "",
-                                            simulateBox.checked,
-                                            true
-                                        )
-                                    }
-                                    GhostButton {
-                                        text: "检测设备"
-                                        enabled: !appController.busy
-                                        onClicked: {
-                                            suppressNextResultAutoNav = true
-                                            appController.checkDeviceConnection()
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 12
+                                        Label {
+                                            text: "执行操作"
+                                            font.pixelSize: 18
+                                            font.bold: true
+                                            color: "#0f172a"
                                         }
+                                        LightCheckBox { id: simulateBox; text: "模拟测试"; checked: true }
+                                        Item { Layout.fillWidth: true }
                                     }
-                                    Item { Layout.fillWidth: true }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 12
+                                        AppButton {
+                                            text: "运行流程"
+                                            enabled: !appController.busy && selectedXmlPath.length > 0
+                                            onClicked: appController.runProcessFlow(
+                                                selectedXmlPath,
+                                                processModelCombo.currentIndex >= 0 ? appController.resolveModelPath(modelNames[processModelCombo.currentIndex]) : "",
+                                                simulateBox.checked,
+                                                true,
+                                                screenSourceCombo.currentIndex === 1 ? "desktop" : "adb"
+                                            )
+                                        }
+                                        GhostButton {
+                                            text: "检测设备"
+                                            enabled: !appController.busy
+                                            onClicked: {
+                                                suppressNextResultAutoNav = true
+                                                appController.checkDeviceConnection()
+                                            }
+                                        }
+                                        LightComboBox {
+                                            id: screenSourceCombo
+                                            implicitWidth: 180
+                                            model: ["车机截屏", "电脑截屏"]
+                                            currentIndex: 0
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                    }
                                 }
                             }
                         }

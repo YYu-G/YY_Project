@@ -1,0 +1,18 @@
+path: .
+train: ./images/train
+val: ./images/val
+test: ./images/test
+nc: 12
+names:
+- home
+- app
+- setting
+- musci
+- power
+- guider
+- home_btn
+- app_btn
+- setting_btn
+- music_btn
+- power_btn
+- guider_btn

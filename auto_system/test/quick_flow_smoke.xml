@@ -1,0 +1,86 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<CarTestFlow name="Quick Flow Data3.1" version="1.0">
+  <ImageResources>
+    <!-- Page anchors (from D:\uid02310\Desktop\sucai\page) -->
+    <Image
+      id="home_page"
+      path="D:\uid02310\Desktop\sucai\page\home1.png"
+      className="home"
+      aliases="home,home_page"
+      description="home page anchor"
+    />
+    <Image
+      id="music_page"
+      path="D:\uid02310\Desktop\screenshot-20260515-135401.png"
+      className="musci"
+      aliases="musci,music,music_page"
+      description="music page anchor (dataset class is 'musci')"
+    />
+    <Image
+      id="app_page"
+      path="D:\uid02310\Desktop\sucai\page\appCenter.png"
+      className="app"
+      aliases="app,app_page,appCenter"
+      description="appCenter page anchor"
+    />
+
+    <!-- Buttons (from D:\uid02310\Desktop\sucai\button) -->
+    <Image
+      id="home_btn"
+      path="D:\uid02310\Desktop\sucai\button\home_btn.png"
+      className="home_btn"
+      aliases="home_btn,home"
+      description="home button"
+    />
+    <Image
+      id="music_btn"
+      path="D:\uid02310\Desktop\sucai\button\music_btn.png"
+      className="music_btn"
+      aliases="music_btn,musci,music"
+      description="music button"
+    />
+    <Image
+      id="app_btn"
+      path="D:\uid02310\Desktop\sucai\button\appCenter_btn.png"
+      className="app_btn"
+      aliases="app_btn,app"
+      description="appCenter button"
+    />
+  </ImageResources>
+
+  <TestCase id="TC_FLOW_001" name="home-music-home-app-home">
+    <Description>
+      home page -> click music_btn -> verify music page -> click home_btn -> verify home page
+      -> click app_btn -> verify app page -> click home_btn -> verify home page
+    </Description>
+    <Steps>
+      <Step id="1" name="Initial home">
+        <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+      </Step>
+
+      <Step id="2" name="Enter music">
+        <Action type="click_image" imageId="music_btn" onPageImageId="home_page" />
+        <Action type="wait" duration="1000" />
+        <Assert type="verify_image" imageId="music_page" expectedState="visible" timeout="5000" />
+      </Step>
+
+      <Step id="3" name="Back to home from music">
+        <Action type="click_image" imageId="home_btn" onPageImageId="music_page" />
+        <Action type="wait" duration="1000" />
+        <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+      </Step>
+
+      <Step id="4" name="Enter appCenter">
+        <Action type="click_image" imageId="app_btn" onPageImageId="home_page" />
+        <Action type="wait" duration="1000" />
+        <Assert type="verify_image" imageId="app_page" expectedState="visible" timeout="5000" />
+      </Step>
+
+      <Step id="5" name="Back to home from appCenter">
+        <Action type="click_image" imageId="home_btn" onPageImageId="app_page" />
+        <Action type="wait" duration="1000" />
+        <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+      </Step>
+    </Steps>
+  </TestCase>
+</CarTestFlow>

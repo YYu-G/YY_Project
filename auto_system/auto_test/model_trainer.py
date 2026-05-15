@@ -1,6 +1,6 @@
 import argparse
 import os
-import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -14,8 +14,9 @@ from yolo_dataset_builder import build_yolo_dataset, collect_image_files
 
 
 def _detect_auto_system_root() -> Path:
-    auto_system_abs = Path(__file__).resolve().parent.parent
-    return Path(os.path.relpath(auto_system_abs, Path.cwd()))
+    # Always use absolute path to avoid Ultralytics treating project as relative
+    # and auto-prepending runs/detect.
+    return Path(__file__).resolve().parent.parent
 
 
 class ModelTrainer:
@@ -26,24 +27,26 @@ class ModelTrainer:
 
     def __init__(self, dataset_name: str = "custom_dataset", datasets_root: Optional[str] = None):
         self.dataset_name = dataset_name
-        self.auto_system_root = _detect_auto_system_root()
-        self.datasets_root = Path(datasets_root) if datasets_root else (self.auto_system_root / "datasets")
+        self.auto_system_root = _detect_auto_system_root().resolve()
+        self.datasets_root = (Path(datasets_root).resolve() if datasets_root else (self.auto_system_root / "datasets"))
         self.dataset_dir = self.datasets_root / dataset_name
-        self.models_root = self.auto_system_root / "yolo" / "runs"
+        self.models_root = (self.auto_system_root / "yolo" / "runs").resolve()
         self.models_root.mkdir(parents=True, exist_ok=True)
-        self.fixed_models_dir = self.auto_system_root / "yolo"
-        self.fixed_models_dir.mkdir(parents=True, exist_ok=True)
 
     def create_dataset_with_annotation(
         self,
         raw_image_dir: str,
         class_names: Optional[List[str]] = None,
         classes_file: Optional[str] = None,
-        train_ratio: float = 0.7,
+        train_ratio: float = 0.8,
         val_ratio: float = 0.2,
-        test_ratio: float = 0.1,
+        test_ratio: float = 0.0,
         seed: int = 42,
         skip_unlabeled: bool = False,
+        min_train_samples: int = 30,
+        rare_class_names: Optional[List[str]] = None,
+        rare_multiplier: int = 3,
+        force_val_coverage: bool = True,
     ) -> Dict:
         if class_names is None:
             class_names = []
@@ -127,6 +130,10 @@ class ModelTrainer:
             val_ratio=val_ratio,
             test_ratio=test_ratio,
             seed=seed,
+            min_train_samples=min_train_samples,
+            rare_class_names=rare_class_names,
+            rare_multiplier=rare_multiplier,
+            force_val_coverage=force_val_coverage,
         )
 
         return {
@@ -135,6 +142,9 @@ class ModelTrainer:
             "dataset_dir": export_result["dataset_dir"],
             "yaml_path": export_result["yaml_path"],
             "counts": export_result["counts"],
+            "class_distribution": export_result.get("class_distribution", {}),
+            "split_stats": export_result.get("split_stats", {}),
+            "oversample_stats": export_result.get("oversample_stats", {}),
             "class_names": class_names,
         }
 
@@ -174,15 +184,18 @@ class ModelTrainer:
         # is unavailable in current environment.
         try:
             from ultralytics import YOLO
+            from ultralytics.engine.trainer import BaseTrainer
         except ImportError as e:
             raise ImportError(
                 "ultralytics is required for training. Install with: pip install ultralytics"
             ) from e
 
+        self._install_ultralytics_save_retry(BaseTrainer)
+
         weights_path = self._resolve_weights(model_weights)
         model = YOLO(weights_path)
 
-        run_name_unique = self._next_unique_name(self.fixed_models_dir, run_name)
+        run_name_unique = self._next_unique_name(self.models_root, run_name)
         train_result = model.train(
             data=str(dataset_yaml_for_train),
             epochs=epochs,
@@ -190,6 +203,7 @@ class ModelTrainer:
             batch=batch,
             device=device,
             workers=workers,
+            # Keep run outputs under auto_system/yolo/runs
             project=str(self.models_root),
             name=run_name_unique,
             exist_ok=exist_ok,
@@ -218,23 +232,20 @@ class ModelTrainer:
         )
 
         save_dir = Path(getattr(train_result, "save_dir", self.models_root / run_name_unique))
+        if not save_dir.exists():
+            fallback_save_dir = self.models_root / run_name_unique
+            if fallback_save_dir.exists():
+                save_dir = fallback_save_dir
         best_model = save_dir / "weights" / "best.pt"
         last_model = save_dir / "weights" / "last.pt"
-        fixed_dir = self.fixed_models_dir / run_name_unique
-        fixed_dir.mkdir(parents=True, exist_ok=True)
-
-        fixed_best = fixed_dir / "best.pt"
-        fixed_last = fixed_dir / "last.pt"
-        if best_model.exists():
-            shutil.copy2(best_model, fixed_best)
-        if last_model.exists():
-            shutil.copy2(last_model, fixed_last)
-
-        for aux_name in ("args.yaml", "results.csv", "results.png", "confusion_matrix.png"):
-            aux_src = save_dir / aux_name
-            if aux_src.exists():
-                shutil.copy2(aux_src, fixed_dir / aux_name)
-
+        # Fallback names used by our trainer patch for environments where
+        # writing to last.pt/best.pt fails with Windows Errno 22.
+        alt_best_model = save_dir / "weights" / "_best_ckpt.pt"
+        alt_last_model = save_dir / "weights" / "_last_ckpt.pt"
+        if not best_model.exists() and alt_best_model.exists():
+            best_model = alt_best_model
+        if not last_model.exists() and alt_last_model.exists():
+            last_model = alt_last_model
         result: Dict[str, Any] = {
             "success": True,
             "dataset_yaml": str(dataset_yaml_for_train),
@@ -242,9 +253,9 @@ class ModelTrainer:
             "result_dir": str(save_dir),
             "best_model": str(best_model),
             "last_model": str(last_model),
-            "fixed_model_dir": str(fixed_dir),
-            "fixed_best_model": str(fixed_best),
-            "fixed_last_model": str(fixed_last),
+            "fixed_model_dir": str(save_dir),
+            "fixed_best_model": str(best_model),
+            "fixed_last_model": str(last_model),
             "params": {
                 "epochs": epochs,
                 "imgsz": imgsz,
@@ -254,11 +265,60 @@ class ModelTrainer:
                 "run_name": run_name_unique,
             },
         }
-
         results_csv = save_dir / "results.csv"
         if results_csv.exists():
             result["results_csv"] = str(results_csv)
         return result
+
+    @staticmethod
+    def _install_ultralytics_save_retry(base_trainer_cls: Any) -> None:
+        """
+        Keep training behavior unchanged, only add retry for transient Windows
+        write error when Ultralytics saves last.pt/best.pt.
+        """
+        if getattr(base_trainer_cls, "_auto_system_save_retry_installed", False):
+            return
+
+        original_save_model = base_trainer_cls.save_model
+
+        def save_model_with_retry(trainer_self, *args, **kwargs):
+            # One-time checkpoint target remap: keep behavior the same while
+            # avoiding problematic filename in some Windows environments.
+            if not getattr(trainer_self, "_auto_system_ckpt_remap_done", False):
+                try:
+                    wdir = trainer_self.wdir
+                    trainer_self.last = wdir / "_last_ckpt.pt"
+                    trainer_self.best = wdir / "_best_ckpt.pt"
+                except Exception:
+                    pass
+                trainer_self._auto_system_ckpt_remap_done = True
+
+            last_err: Optional[OSError] = None
+            for i in range(3):
+                try:
+                    return original_save_model(trainer_self, *args, **kwargs)
+                except OSError as e:
+                    path_text = str(e)
+                    is_checkpoint_write = (
+                        ("last.pt" in path_text)
+                        or ("best.pt" in path_text)
+                        or ("_last_ckpt.pt" in path_text)
+                        or ("_best_ckpt.pt" in path_text)
+                    )
+                    if e.errno == 22 and is_checkpoint_write:
+                        try:
+                            trainer_self.wdir.mkdir(parents=True, exist_ok=True)
+                        except Exception:
+                            pass
+                        time.sleep(0.25 * (i + 1))
+                        last_err = e
+                        continue
+                    raise
+            if last_err is not None:
+                raise last_err
+
+        base_trainer_cls.save_model = save_model_with_retry
+        base_trainer_cls._auto_system_save_retry_installed = True
 
     def _prepare_dataset_yaml_for_training(self, dataset_yaml_path: Path) -> Path:
         """
@@ -352,10 +412,22 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dataset_name", default="custom_dataset")
     parser.add_argument("--datasets_root", default=None)
-    parser.add_argument("--train_ratio", type=float, default=0.7)
+    parser.add_argument("--train_ratio", type=float, default=0.8)
     parser.add_argument("--val_ratio", type=float, default=0.2)
-    parser.add_argument("--test_ratio", type=float, default=0.1)
+    parser.add_argument("--test_ratio", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--min_train_samples", type=int, default=30)
+    parser.add_argument(
+        "--rare_classes",
+        default="",
+        help="Comma-separated class names to over-sample in train split",
+    )
+    parser.add_argument("--rare_multiplier", type=int, default=3)
+    parser.add_argument(
+        "--no_force_val_coverage",
+        action="store_true",
+        help="Disable forced class coverage in val split",
+    )
     parser.add_argument(
         "--skip_unlabeled",
         action="store_true",
@@ -373,5 +445,9 @@ if __name__ == "__main__":
         test_ratio=args.test_ratio,
         seed=args.seed,
         skip_unlabeled=args.skip_unlabeled,
+        min_train_samples=args.min_train_samples,
+        rare_class_names=[x.strip() for x in args.rare_classes.split(",") if x.strip()],
+        rare_multiplier=args.rare_multiplier,
+        force_val_coverage=not args.no_force_val_coverage,
     )
     print(result)

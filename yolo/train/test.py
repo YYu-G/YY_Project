@@ -2,10 +2,16 @@ from ultralytics import YOLO
 import cv2
 
 # 【这次训练好的 正确路径】
-MODEL_PATH = "D:/uid02310/Desktop/YY_Project/auto_system/yolo/test9_20260512_164959/best.pt"
+MODEL_PATH = "D:/uid02310/Desktop/YY_Project/auto_system/yolo/runs/actual3_20260515_100135/weights/_best_ckpt.pt"
+# "D:/uid02310/Desktop/YY_Project/auto_system/yolo/runs/t2_20260513_144905/weights/_best_ckpt.pt"
+# "D:/uid02310/Desktop/YY_Project/auto_system/yolo/t1_20260513_141007/best.pt"
+# "D:/uid02310/Desktop/YY_Project/auto_system/yolo/test_20260513_121311/best.pt"
+# "D:/uid02310/Desktop/YY_Project/auto_system/yolo/actual2_20260513_123840/best.pt"
 
 # 你的测试图路径
-IMAGE_PATH = "D:/uid02310/Desktop/YY_Project/auto_system/images"
+# IMAGE_PATH = "D:/uid02310/Desktop/YY_Project/auto_system/images"
+# IMAGE_PATH = "D:/uid02310/Desktop/sucai/usage"
+IMAGE_PATH="D:/uid02310/Desktop/screenshot-20260515-143506.png"
 
 # 加载模型
 model = YOLO(MODEL_PATH)
@@ -14,7 +20,7 @@ model = YOLO(MODEL_PATH)
 results = model.predict(
     source=IMAGE_PATH,
     imgsz=1024,
-    conf=0.2,     # 不用0.001那么低，0.1就够了
+    conf=0.1,     # 不用0.001那么低，0.1就够了
     iou=0.45,
     device="cpu"
 )

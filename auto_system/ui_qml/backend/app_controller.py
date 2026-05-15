@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import threading
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -167,9 +168,9 @@ class AppController(QObject):
 
     def _model_checkpoint_label(self, model_path: Path) -> str:
         name = model_path.name.lower()
-        if name == "best.pt":
+        if name in {"best.pt", "_best_ckpt.pt"}:
             return "最佳"
-        if name == "last.pt":
+        if name in {"last.pt", "_last_ckpt.pt"}:
             return "最后"
         return model_path.stem
 
@@ -181,7 +182,12 @@ class AppController(QObject):
         return f"{run_name} / {checkpoint} ({model_path.name})"
 
     def _model_sort_key(self, model_path: Path):
-        checkpoint_rank = {"best.pt": 0, "last.pt": 1}.get(model_path.name.lower(), 2)
+        checkpoint_rank = {
+            "best.pt": 0,
+            "_best_ckpt.pt": 0,
+            "last.pt": 1,
+            "_last_ckpt.pt": 1,
+        }.get(model_path.name.lower(), 2)
         run_dir = model_path.parent.parent if model_path.parent.name == "weights" else model_path.parent
         try:
             modified = run_dir.stat().st_mtime
@@ -204,11 +210,8 @@ class AppController(QObject):
                 datasets.append(display)
         if self._models_root.exists():
             for p in self._models_root.rglob("*.pt"):
-                try:
-                    relative_parts = p.relative_to(self._models_root).parts
-                except ValueError:
-                    relative_parts = ()
-                if relative_parts and relative_parts[0] == "runs":
+                # UI only exposes trained "best" checkpoints.
+                if p.name.lower() not in {"best.pt", "_best_ckpt.pt"}:
                     continue
                 resolved = str(p.resolve())
                 display = self._model_display_name(p)
@@ -328,8 +331,15 @@ class AppController(QObject):
             return str(Path(str(result.get("yaml_path"))).resolve().parent)
         return ""
 
-    @Slot(str, str, bool, bool)
-    def runProcessFlow(self, xml_path: str, model_path: str, simulate: bool, continue_on_failure: bool) -> None:
+    @Slot(str, str, bool, bool, str)
+    def runProcessFlow(
+        self,
+        xml_path: str,
+        model_path: str,
+        simulate: bool,
+        continue_on_failure: bool,
+        screen_source: str,
+    ) -> None:
         if self._busy:
             self._emit_log("已有任务在运行，请稍后。")
             return
@@ -344,7 +354,7 @@ class AppController(QObject):
                     simulate=simulate,
                     stop_on_failure=not continue_on_failure,
                     model_path=self.normalizePath(model_path) or None,
-                    screen_source="desktop" if simulate else "adb",
+                    screen_source=(screen_source or "adb").strip().lower(),
                     model_conf=0.25,
                     model_iou=0.7,
                     model_device="cpu",
@@ -516,6 +526,7 @@ class AppController(QObject):
             self._set_busy(True)
             self._set_status("模型训练中")
             self._emit_log("开始模型训练。")
+            run_name_final = run_name.strip() or f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             try:
                 controller = ModelController(
                     datasets_root=str((self._auto_system_root / "datasets").resolve()),
@@ -531,7 +542,7 @@ class AppController(QObject):
                     batch=int(batch),
                     workers=4,
                     device="cpu",
-                    run_name=run_name.strip() or f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    run_name=run_name_final,
                     exist_ok=False,
                     auto_load_best=False,
                 )
@@ -552,6 +563,16 @@ class AppController(QObject):
                 self._set_summary(f"耗时 {elapsed:.2f}s | 训练失败")
                 self._append_history("模型训练", "失败", elapsed, "")
                 self._emit_log(f"模型训练失败：{e}")
+                self._emit_log("训练异常完整堆栈：\n" + traceback.format_exc())
+                run_dir = self._models_root / "runs" / run_name_final
+                best_pt = run_dir / "weights" / "best.pt"
+                last_pt = run_dir / "weights" / "last.pt"
+                if best_pt.exists() or last_pt.exists():
+                    self._emit_log(
+                        f"检测到权重产物：best={'Y' if best_pt.exists() else 'N'}, "
+                        f"last={'Y' if last_pt.exists() else 'N'}；目录：{run_dir}"
+                    )
+                    self._set_output_dir(str(run_dir.resolve()))
                 self._set_status("模型训练失败")
             finally:
                 self._set_busy(False)

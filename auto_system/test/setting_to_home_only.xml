@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CarTestFlow name="Setting To Home Only" version="1.0">
+  <ImageResources>
+    <Image
+      id="setting_page"
+      path="D:\uid02310\Desktop\sucai\page\setting.png"
+      className="setting"
+      aliases="setting,setting_page"
+      description="setting page anchor"
+    />
+    <Image
+      id="home_page"
+      path="D:\uid02310\Desktop\sucai\page\home1.png"
+      className="home"
+      aliases="home,home_page"
+      description="home page anchor"
+    />
+    <Image
+      id="home_btn"
+      path="D:\uid02310\Desktop\sucai\button\home_btn.png"
+      className="home_btn"
+      aliases="home_btn,home"
+      description="home button"
+    />
+  </ImageResources>
+
+  <TestCase id="TC_SETTING_HOME_001" name="Click home_btn on setting page">
+    <Description>Assume current page is setting, click home_btn and verify home page.</Description>
+    <Steps>
+      <Step id="1" name="Verify setting page first">
+        <Assert type="verify_image" imageId="setting_page" expectedState="visible" timeout="5000" />
+      </Step>
+      <Step id="2" name="Click home button">
+        <Action type="click_image" imageId="home_btn"  />
+        <Action type="wait" duration="1000" />
+      </Step>
+      <Step id="3" name="Verify back to home page">
+        <Assert type="verify_image" imageId="home_page" expectedState="visible" timeout="5000" />
+      </Step>
+    </Steps>
+  </TestCase>
+</CarTestFlow>

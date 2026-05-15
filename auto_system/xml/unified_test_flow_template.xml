@@ -1,6 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  XML脚本模板（与当前解析器/执行器对齐）
+
+  根节点:
+    CarTestFlow(name, version)
+
+  支持的Action:
+    - click_image(imageId, onPageImageId?)
+    - click_coordinate(x, y)
+    - swipe(startX, startY, endX, endY, duration?)
+    - press_key(key)
+    - wait(duration)
+
+  支持的Assert:
+    - verify_image(imageId, expectedState=visible|hidden, timeout?, onPageImageId?)
+    - verify_image_present(imageId, timeout?, onPageImageId?)
+    - verify_text(region="x,y,w,h", text, timeout?)
+    - verify_page(pageName?, pageImageId, timeout?)
+
+  循环:
+    - 仅支持 Loop times="N"
+    - 可使用 ${iteration} 占位符
+
+  说明:
+    - onPageImageId 目前仅在“电脑截屏”模式下用于页面区域约束；
+      在“车机截屏(adb)”模式下会忽略该约束。
+-->
 <CarTestFlow name="Car HMI Test Flow Template" version="1.0">
   <ImageResources>
+    <!--
+      Image字段建议:
+        id         : 流程引用键（必填）
+        path       : 图片路径（建议可访问）
+        className  : 类名（有就直接用于映射）
+        aliases    : 逗号分隔别名（可选）
+        description: 描述（可选）
+    -->
     <Image id="home_icon" className="home" path="./images/home.png" description="Home icon" />
     <Image id="ac_icon" className="ac" path="./images/ac.png" description="AC icon" />
     <Image id="ac_panel" className="ac_panel" path="./images/ac_panel.png" description="AC panel" />
@@ -41,3 +76,35 @@
     </Steps>
   </TestCase>
 </CarTestFlow>
+
+<!--
+  =========================
+  XML脚本使用说明（模板末尾）
+  =========================
+
+  1. 编写顺序建议
+     - 先在 ImageResources 中定义页面锚点图与按钮图（id 要唯一）。
+     - 再在 TestCase/Steps 中按业务流程写 Step。
+     - 每次点击后建议配 wait + verify_image，提升稳定性。
+
+  2. imageId / 类名映射
+     - 流程里通过 imageId 引用资源。
+     - 若资源里有 className/modelClass，会优先用于识别映射。
+     - 若无类名标注，系统会尝试根据资源图自动推断类别（依赖当前模型）。
+
+  3. onPageImageId 使用建议
+     - 电脑截屏模式：建议填写 onPageImageId，先定位页面再定位目标。
+     - 车机截屏(adb)模式：该字段当前会被忽略，按全屏检测目标。
+
+  4. 循环写法
+     - 使用 <Loop times="N"> ... </Loop>
+     - 在 Step id/name 中可用 ${iteration} 表示第几轮。
+
+  5. 常见稳定性参数
+     - click_image 后 wait 建议 1000~1500ms（页面切换慢时可更大）。
+     - verify_image timeout 建议 5000~9000ms（按页面加载速度调整）。
+
+  6. 运行前检查
+     - 车机截屏模式：确认 adb devices 有可用设备。
+     - 电脑截屏模式：确认目标页面在可截图区域内可见。
+-->

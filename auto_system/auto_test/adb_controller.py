@@ -31,6 +31,7 @@ class AdbController:
         self.model_controller = None
         self.image_resources: Dict[str, Dict[str, str]] = {}
         self.image_resource_base_dir: Optional[Path] = None
+        self._resource_inferred_class: Dict[str, str] = {}
         self._device_size_cache: Optional[Tuple[int, int]] = None
 
         # Mock state for assert simulation.
@@ -48,6 +49,47 @@ class AdbController:
     ) -> None:
         self.image_resources = image_resources or {}
         self.image_resource_base_dir = Path(base_dir).resolve() if base_dir else None
+        self._resource_inferred_class = {}
+        self._prepare_resource_class_mapping()
+
+    def _prepare_resource_class_mapping(self) -> None:
+        """
+        Build class mapping for image resources:
+        1) Prefer explicit XML labels (className/modelClass/class_name/label)
+        2) If missing, infer class from the resource image with current model.
+        """
+        for image_id in list(self.image_resources.keys()):
+            resource = self.image_resources.get(image_id, {}) or {}
+            explicit = (
+                str(resource.get("className", "")).strip()
+                or str(resource.get("modelClass", "")).strip()
+                or str(resource.get("class_name", "")).strip()
+                or str(resource.get("label", "")).strip()
+            )
+            if explicit:
+                self._resource_inferred_class[image_id] = explicit
+                continue
+            inferred = self._infer_class_from_resource_image(image_id)
+            if inferred:
+                self._resource_inferred_class[image_id] = inferred
+                print(f"[MAP] imageId='{image_id}' inferred class='{inferred}'")
+
+    def _infer_class_from_resource_image(self, image_id: str) -> str:
+        resource_img = self._resolve_image_resource_path(image_id)
+        if resource_img is None or self.model_controller is None:
+            return ""
+        infer_fn = getattr(self.model_controller, "infer", None)
+        if not callable(infer_fn):
+            return ""
+        try:
+            detections = list(infer_fn(str(resource_img)) or [])
+        except Exception as e:
+            print(f"[MAP] infer class failed for imageId='{image_id}': {e}")
+            return ""
+        if not detections:
+            return ""
+        best = max(detections, key=lambda d: float(d.get("confidence", 0.0)))
+        return str(best.get("class_name", "")).strip()
 
     def set_screen_source(self, screen_source: str) -> None:
         value = str(screen_source or "adb").strip().lower()
@@ -112,17 +154,57 @@ class AdbController:
             print("[ADB] adb not found in PATH.")
             return False
 
-        cmd = self._build_adb_prefix(device_serial) + ["exec-out", "screencap", "-p"]
+        adb_prefix = self._build_adb_prefix(device_serial)
+        cmd = adb_prefix + ["exec-out", "screencap", "-p"]
         stdout, stderr = self.run_adb_command(cmd, timeout=20, binary=True)
         if stdout is None:
-            print(f"[ADB] screenshot failed: {stderr}")
-            return False
+            print(f"[ADB] screenshot exec-out failed: {stderr}")
+            return self._catch_screen_via_pull(save_path, device_serial=device_serial)
 
-        data: bytes = stdout.replace(b"\r\n", b"\n")
+        data: bytes = stdout
+        png_sig = b"\x89PNG\r\n\x1a\n"
+        # Some devices/adb combos return valid PNG directly; replacing all CRLF
+        # can corrupt binary payload. Only normalize as a fallback.
+        if not data.startswith(png_sig):
+            normalized = data.replace(b"\r\n", b"\n")
+            if normalized.startswith(b"\x89PNG\n\x1a\n") or normalized.startswith(png_sig):
+                data = normalized
         save_file = Path(save_path)
         save_file.parent.mkdir(parents=True, exist_ok=True)
         save_file.write_bytes(data)
+        if save_file.stat().st_size <= 32:
+            print(f"[ADB] screenshot failed: invalid file size ({save_file.stat().st_size} bytes)")
+            return self._catch_screen_via_pull(save_path, device_serial=device_serial)
         print(f"[ADB] screenshot saved: {save_file}")
+        return True
+
+    def _catch_screen_via_pull(self, save_path: str, device_serial: Optional[str] = None) -> bool:
+        """
+        Fallback for devices where exec-out screencap stream is unstable.
+        """
+        remote_path = "/sdcard/__auto_system_screen.png"
+        prefix = self._build_adb_prefix(device_serial)
+        sc_cmd = prefix + ["shell", "screencap", "-p", remote_path]
+        _, sc_err = self.run_adb_command(sc_cmd, timeout=20, binary=False)
+        if sc_err:
+            print(f"[ADB] fallback screencap failed: {sc_err}")
+            return False
+
+        save_file = Path(save_path)
+        save_file.parent.mkdir(parents=True, exist_ok=True)
+        pull_cmd = prefix + ["pull", remote_path, str(save_file)]
+        _, pull_err = self.run_adb_command(pull_cmd, timeout=20, binary=False)
+        # Best-effort cleanup.
+        rm_cmd = prefix + ["shell", "rm", "-f", remote_path]
+        self.run_adb_command(rm_cmd, timeout=10, binary=False)
+
+        if pull_err:
+            print(f"[ADB] fallback pull failed: {pull_err}")
+            return False
+        if not save_file.exists() or save_file.stat().st_size <= 32:
+            print("[ADB] fallback screenshot failed: invalid pulled file")
+            return False
+        print(f"[ADB] screenshot saved (fallback): {save_file}")
         return True
 
     def catch_desktop_screen(self, save_path: str) -> bool:
@@ -366,30 +448,50 @@ class AdbController:
         screen_path = self._capture_for_detection()
         if not screen_path:
             return None
-        detections = self._infer_screen_detections(screen_path) if self.model_controller is not None else []
+        try:
+            detections = self._infer_screen_detections(screen_path) if self.model_controller is not None else []
 
-        page_detection: Optional[Dict[str, Any]] = None
-        if on_page_image_id:
-            page_labels = self._build_target_labels(on_page_image_id)
-            page_detection = self._pick_best_detection(detections, page_labels, region=None)
-            if page_detection is None:
-                page_detection = self._match_image_resource(screen_path, on_page_image_id, region=None)
-            if page_detection is None:
+            # onPageImageId page constraint is only applied in desktop-capture mode.
+            # For adb capture mode we detect target globally on device screenshot.
+            use_page_constraint = bool(on_page_image_id) and self.screen_source == "desktop"
+
+            page_detection: Optional[Dict[str, Any]] = None
+            if use_page_constraint:
+                page_labels = self._build_target_labels(on_page_image_id)
+                page_detection = self._pick_best_detection(detections, page_labels, region=None)
+                if page_detection is None:
+                    page_detection = self._match_image_resource(screen_path, on_page_image_id, region=None)
+                if page_detection is None:
+                    return None
+
+            labels = self._build_target_labels(image_id)
+            region = page_detection.get("bbox") if page_detection else None
+            target_detection = self._pick_best_detection(detections, labels, region=region)
+            if target_detection is None:
+                target_detection = self._match_image_resource(screen_path, image_id, region=region)
+            if target_detection is None:
                 return None
 
-        labels = self._build_target_labels(image_id)
-        region = page_detection.get("bbox") if page_detection else None
-        target_detection = self._pick_best_detection(detections, labels, region=region)
-        if target_detection is None:
-            target_detection = self._match_image_resource(screen_path, image_id, region=region)
-        if target_detection is None:
-            return None
+            return {
+                "target": target_detection,
+                "page": page_detection,
+                "screen_size": self._read_image_size(screen_path),
+            }
+        finally:
+            self._cleanup_temp_capture(screen_path)
 
-        return {
-            "target": target_detection,
-            "page": page_detection,
-            "screen_size": self._read_image_size(screen_path),
-        }
+    def _cleanup_temp_capture(self, capture_path: Path) -> None:
+        try:
+            capture_path.unlink(missing_ok=True)
+        except TypeError:
+            # Python<3.8 compatibility safeguard (missing_ok unavailable)
+            try:
+                if capture_path.exists():
+                    capture_path.unlink()
+            except OSError:
+                pass
+        except OSError:
+            pass
 
     def _resolve_image_resource_path(self, image_id: str) -> Optional[Path]:
         resource = self.image_resources.get(image_id, {}) or {}
@@ -674,6 +776,9 @@ class AdbController:
         labels.append(image_id.replace("_page", ""))
 
         resource = self.image_resources.get(image_id, {})
+        inferred_cls = self._resource_inferred_class.get(image_id, "")
+        if inferred_cls:
+            labels.append(inferred_cls)
         for key in ("className", "class_name", "modelClass", "model_class", "label", "aliases"):
             value = str(resource.get(key, "")).strip()
             if value:

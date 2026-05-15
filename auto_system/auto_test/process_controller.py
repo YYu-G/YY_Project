@@ -23,7 +23,7 @@ class ProcessController:
         stop_on_failure: bool = True,
         model_path: Optional[str] = None,
         screen_source: str = "adb",
-        model_conf: float = 0.25,
+        model_conf: float = 0.2,
         model_iou: float = 0.7,
         model_device: str = "cpu",
     ) -> None:
@@ -247,7 +247,7 @@ if __name__ == "__main__":
         choices=["adb", "desktop"],
         help="Screen capture source for model detection: adb or desktop",
     )
-    arg_parser.add_argument("--model_conf", type=float, default=0.25)
+    arg_parser.add_argument("--model_conf", type=float, default=0.2)
     arg_parser.add_argument("--model_iou", type=float, default=0.7)
     arg_parser.add_argument("--model_device", default="cpu")
     arg_parser.add_argument(
