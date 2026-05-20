@@ -108,6 +108,17 @@ class AdbController:
     def _adb_available(self) -> bool:
         return shutil.which("adb") is not None
 
+    @staticmethod
+    def _hidden_subprocess_kwargs() -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        if hasattr(subprocess, "STARTUPINFO") and hasattr(subprocess, "STARTF_USESHOWWINDOW"):
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kwargs["startupinfo"] = si
+        return kwargs
+
     def run_adb_command(
         self, cmd: List[str], timeout: int = 10, binary: bool = False
     ) -> Tuple[Optional[Any], str]:
@@ -118,6 +129,7 @@ class AdbController:
                 stderr=subprocess.PIPE,
                 timeout=timeout,
                 check=False,
+                **self._hidden_subprocess_kwargs(),
             )
             stdout = result.stdout if binary else result.stdout.decode("utf-8", errors="ignore").strip()
             stderr = result.stderr.decode("utf-8", errors="ignore").strip()
@@ -829,6 +841,40 @@ class AdbController:
         self.operation_history.append(
             {"category": category, "type": op_type, "params": dict(params)}
         )
+
+        # Simulate mode is used as XML "compile/feasibility" validation:
+        # validate operation category/type/required params only, do not run
+        # runtime detection/click assertions against device or model.
+        if self.simulate:
+            if category == "action":
+                if op_type == "click_image":
+                    return bool(str(params.get("imageId", "")).strip())
+                if op_type == "click_coordinate":
+                    return ("x" in params) and ("y" in params)
+                if op_type == "swipe":
+                    required = ("startX", "startY", "endX", "endY")
+                    return all(k in params for k in required)
+                if op_type == "press_key":
+                    return bool(str(params.get("key", "")).strip())
+                if op_type == "wait":
+                    return "duration" in params
+                print(f"[WARN] unsupported action type: {op_type}")
+                return False
+
+            if category == "assert":
+                if op_type == "verify_image":
+                    return bool(str(params.get("imageId", "")).strip())
+                if op_type == "verify_text":
+                    return bool(str(params.get("text", "")).strip())
+                if op_type == "verify_image_present":
+                    return bool(str(params.get("imageId", "")).strip())
+                if op_type == "verify_page":
+                    return bool(str(params.get("pageImageId", "")).strip())
+                print(f"[WARN] unsupported assert type: {op_type}")
+                return False
+
+            print(f"[WARN] unsupported operation category: {category}")
+            return False
 
         if category == "action":
             if op_type == "click_image":

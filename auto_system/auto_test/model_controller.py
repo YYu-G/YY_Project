@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from model_trainer import ModelTrainer
 
@@ -70,14 +70,15 @@ class ModelController:
         self,
         dataset_yaml: str,
         model_weights: str = "yolo11n.pt",
-        epochs: int = 100,
-        imgsz: int = 640,
+        epochs: int = 150,
+        imgsz: int = 1024,
         batch: int = 16,
         device: str = "cpu",
         workers: int = 4,
         run_name: str = "result",
         exist_ok: bool = True,
         auto_load_best: bool = True,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         result = self.trainer.train_model(
             dataset_yaml=dataset_yaml,
@@ -89,6 +90,7 @@ class ModelController:
             workers=workers,
             run_name=run_name,
             exist_ok=exist_ok,
+            progress_callback=progress_callback,
         )
         if auto_load_best and result.get("fixed_best_model"):
             best_model = str(result["fixed_best_model"])
@@ -111,8 +113,8 @@ class ModelController:
         rare_multiplier: int = 3,
         force_val_coverage: bool = True,
         model_weights: str = "yolo11n.pt",
-        epochs: int = 100,
-        imgsz: int = 640,
+        epochs: int = 150,
+        imgsz: int = 1024,
         batch: int = 16,
         train_device: str = "cpu",
         workers: int = 4,

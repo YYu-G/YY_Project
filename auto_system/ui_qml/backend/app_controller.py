@@ -44,10 +44,16 @@ class AppController(QObject):
         self._model_name_map = {}
         self._dataset_list_text = ""
         self._model_list_text = ""
-        self._history_file = self._auto_system_root / "ui_qml" / "history.json"
+        local_appdata = Path(os.getenv("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))).resolve()
+        self._user_data_dir = local_appdata / "car_screen_auto_test"
+        self._user_data_dir.mkdir(parents=True, exist_ok=True)
+        self._history_file = self._user_data_dir / "history.json"
+        self._report_dir = self._auto_system_root / "test" / "reports"
+        self._report_dir.mkdir(parents=True, exist_ok=True)
         self._last_result_text = ""
         self._load_history()
         self.refreshAssetLists()
+        self._set_output_dir(str(self._report_dir.resolve()))
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
@@ -137,6 +143,17 @@ class AppController(QObject):
     def _emit_log(self, msg: str) -> None:
         now = datetime.now().strftime("%H:%M:%S")
         self.logChanged.emit(f"[{now}] {msg}")
+
+    @staticmethod
+    def _hidden_subprocess_kwargs() -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        if hasattr(subprocess, "STARTUPINFO") and hasattr(subprocess, "STARTF_USESHOWWINDOW"):
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kwargs["startupinfo"] = si
+        return kwargs
 
     def _update_dataset_text(self) -> None:
         self._dataset_list_text = "\n".join(self._dataset_items)
@@ -331,6 +348,35 @@ class AppController(QObject):
             return str(Path(str(result.get("yaml_path"))).resolve().parent)
         return ""
 
+    def _write_report(self, task_prefix: str, task_title: str, result_text: str) -> str:
+        self._report_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_path = self._report_dir / f"{task_prefix}_{ts}.md"
+        lines = [
+            f"# {task_title}报告",
+            "",
+            f"- 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"- 状态摘要: {self._summary_text}",
+            f"- 报告目录: {self._report_dir.resolve()}",
+            "",
+            "## 最近任务历史",
+            "",
+            "```text",
+            self._history_text,
+            "```",
+            "",
+            "## 结果 JSON",
+            "",
+            "```json",
+            result_text,
+            "```",
+            "",
+        ]
+        report_path.write_text("\n".join(lines), encoding="utf-8")
+        self._set_output_dir(str(self._report_dir.resolve()))
+        self._emit_log(f"报告已保存：{report_path}")
+        return str(report_path)
+
     @Slot(str, str, bool, bool, str)
     def runProcessFlow(
         self,
@@ -361,12 +407,13 @@ class AppController(QObject):
                 )
                 result: Dict[str, Any] = process.run(self.normalizePath(xml_path))
                 elapsed = time.time() - started
-                self.resultChanged.emit(json.dumps(result, ensure_ascii=False, indent=2))
-                self._last_result_text = json.dumps(result, ensure_ascii=False, indent=2)
+                result_text = json.dumps(result, ensure_ascii=False, indent=2)
+                self.resultChanged.emit(result_text)
+                self._last_result_text = result_text
                 self._set_summary(self._build_summary(result, elapsed))
-                out_dir = self._extract_output_dir(result)
-                self._set_output_dir(out_dir)
-                self._append_history("流程执行", "成功", elapsed, out_dir)
+                status_text = "成功" if bool(result.get("success", False)) else "失败"
+                self._append_history("流程执行", status_text, elapsed, str(self._report_dir.resolve()))
+                self._write_report("flow", "流程执行", result_text)
                 self.refreshAssetLists()
                 self._emit_log("流程执行完成。")
                 self._set_status("流程执行完成")
@@ -375,7 +422,8 @@ class AppController(QObject):
                 self.resultChanged.emit(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2))
                 self._last_result_text = json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2)
                 self._set_summary(f"耗时 {elapsed:.2f}s | 执行失败")
-                self._append_history("流程执行", "失败", elapsed, "")
+                self._append_history("流程执行", "失败", elapsed, str(self._report_dir.resolve()))
+                self._write_report("flow", "流程执行", self._last_result_text)
                 self._emit_log(f"流程执行失败：{e}")
                 self._set_status("流程执行失败")
             finally:
@@ -404,6 +452,7 @@ class AppController(QObject):
             text=True,
             encoding="utf-8",
             errors="ignore",
+            **self._hidden_subprocess_kwargs(),
         )
         stdout = completed.stdout.strip()
         stderr = completed.stderr.strip()
@@ -450,6 +499,8 @@ class AppController(QObject):
                 self.resultChanged.emit(text)
                 self._set_summary(f"耗时 {elapsed:.2f}s | 设备 {result.get('device_count', 0)} 台可用")
                 self._set_status("设备检测完成" if result.get("success") else "设备未就绪")
+                self._append_history("设备检测", "成功" if bool(result.get("success")) else "失败", elapsed, str(self._report_dir.resolve()))
+                self._write_report("device", "设备检测", text)
                 self._emit_log(str(result.get("message", "设备检测完成。")))
             except Exception as e:
                 elapsed = time.time() - started
@@ -459,6 +510,8 @@ class AppController(QObject):
                 self.resultChanged.emit(text)
                 self._set_summary(f"耗时 {elapsed:.2f}s | 设备检测失败")
                 self._set_status("设备检测失败")
+                self._append_history("设备检测", "失败", elapsed, str(self._report_dir.resolve()))
+                self._write_report("device", "设备检测", text)
                 self._emit_log(f"设备检测失败：{e}")
             finally:
                 self._set_busy(False)
@@ -490,12 +543,13 @@ class AppController(QObject):
                     skip_unlabeled=skip_unlabeled,
                 )
                 elapsed = time.time() - started
-                self.resultChanged.emit(json.dumps(result, ensure_ascii=False, indent=2))
-                self._last_result_text = json.dumps(result, ensure_ascii=False, indent=2)
+                result_text = json.dumps(result, ensure_ascii=False, indent=2)
+                self.resultChanged.emit(result_text)
+                self._last_result_text = result_text
                 self._set_summary(self._build_summary(result, elapsed))
-                out_dir = self._extract_output_dir(result)
-                self._set_output_dir(out_dir)
-                self._append_history("数据集构建", "成功", elapsed, out_dir)
+                status_text = "成功" if bool(result.get("success", False)) else "失败"
+                self._append_history("数据集构建", status_text, elapsed, str(self._report_dir.resolve()))
+                self._write_report("dataset", "数据集构建", result_text)
                 self.refreshAssetLists()
                 self._emit_log("数据集构建完成。")
                 self._set_status("数据集构建完成")
@@ -504,7 +558,8 @@ class AppController(QObject):
                 self.resultChanged.emit(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2))
                 self._last_result_text = json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2)
                 self._set_summary(f"耗时 {elapsed:.2f}s | 构建失败")
-                self._append_history("数据集构建", "失败", elapsed, "")
+                self._append_history("数据集构建", "失败", elapsed, str(self._report_dir.resolve()))
+                self._write_report("dataset", "数据集构建", self._last_result_text)
                 self._emit_log(f"数据集构建失败：{e}")
                 self._set_status("数据集构建失败")
             finally:
@@ -534,6 +589,23 @@ class AppController(QObject):
                     iou=0.7,
                     device="cpu",
                 )
+                def _on_train_progress(progress: Dict[str, Any]) -> None:
+                    current = int(progress.get("current_epoch", 0))
+                    total = int(progress.get("total_epochs", 0))
+                    percent = float(progress.get("percent", 0.0))
+                    event_type = str(progress.get("type", ""))
+                    if event_type == "start":
+                        self._set_status(f"模型训练中 0/{total} (0.0%)")
+                        self._emit_log(f"训练开始：0/{total} (0.0%)")
+                    elif event_type == "batch":
+                        b_cur = int(progress.get("current_batch", 0))
+                        b_tot = int(progress.get("total_batches", 0))
+                        self._set_status(f"模型训练中 Epoch {current}/{total} | Batch {b_cur}/{b_tot}")
+                        self._emit_log(f"训练批次：Epoch {current}/{total} | Batch {b_cur}/{b_tot}")
+                    else:
+                        self._set_status(f"模型训练中 {current}/{total} ({percent:.1f}%)")
+                        self._emit_log(f"训练进度：Epoch {current}/{total} ({percent:.1f}%)")
+
                 result: Dict[str, Any] = controller.train_model(
                     dataset_yaml=self.normalizePath(dataset_yaml),
                     model_weights=self.normalizePath(weights) or "yolo11n.pt",
@@ -545,14 +617,16 @@ class AppController(QObject):
                     run_name=run_name_final,
                     exist_ok=False,
                     auto_load_best=False,
+                    progress_callback=_on_train_progress,
                 )
                 elapsed = time.time() - started
-                self.resultChanged.emit(json.dumps(result, ensure_ascii=False, indent=2))
-                self._last_result_text = json.dumps(result, ensure_ascii=False, indent=2)
+                result_text = json.dumps(result, ensure_ascii=False, indent=2)
+                self.resultChanged.emit(result_text)
+                self._last_result_text = result_text
                 self._set_summary(self._build_summary(result, elapsed))
-                out_dir = self._extract_output_dir(result)
-                self._set_output_dir(out_dir)
-                self._append_history("模型训练", "成功", elapsed, out_dir)
+                status_text = "成功" if bool(result.get("success", False)) else "失败"
+                self._append_history("模型训练", status_text, elapsed, str(self._report_dir.resolve()))
+                self._write_report("train", "模型训练", result_text)
                 self.refreshAssetLists()
                 self._emit_log("模型训练完成。")
                 self._set_status("模型训练完成")
@@ -561,7 +635,7 @@ class AppController(QObject):
                 self.resultChanged.emit(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2))
                 self._last_result_text = json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2)
                 self._set_summary(f"耗时 {elapsed:.2f}s | 训练失败")
-                self._append_history("模型训练", "失败", elapsed, "")
+                self._append_history("模型训练", "失败", elapsed, str(self._report_dir.resolve()))
                 self._emit_log(f"模型训练失败：{e}")
                 self._emit_log("训练异常完整堆栈：\n" + traceback.format_exc())
                 run_dir = self._models_root / "runs" / run_name_final
@@ -572,7 +646,7 @@ class AppController(QObject):
                         f"检测到权重产物：best={'Y' if best_pt.exists() else 'N'}, "
                         f"last={'Y' if last_pt.exists() else 'N'}；目录：{run_dir}"
                     )
-                    self._set_output_dir(str(run_dir.resolve()))
+                self._write_report("train", "模型训练", self._last_result_text)
                 self._set_status("模型训练失败")
             finally:
                 self._set_busy(False)
@@ -581,19 +655,17 @@ class AppController(QObject):
 
     @Slot()
     def openOutputDir(self) -> None:
-        path = self._last_output_dir
-        if not path:
-            self._emit_log("当前没有可打开的输出目录。")
-            return
+        path = str(self._report_dir.resolve())
         p = Path(path)
+        p.mkdir(parents=True, exist_ok=True)
         if not p.exists():
             self._emit_log(f"输出目录不存在：{path}")
             return
         try:
             os.startfile(str(p))  # type: ignore[attr-defined]
-            self._emit_log(f"已打开输出目录：{path}")
+            self._emit_log(f"已打开报告目录：{path}")
         except Exception as e:
-            self._emit_log(f"打开输出目录失败：{e}")
+            self._emit_log(f"打开报告目录失败：{e}")
 
     @Slot(str)
     def appendLog(self, text: str) -> None:
@@ -614,7 +686,7 @@ class AppController(QObject):
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
             self._emit_log(f"XML模板已导出：{dst}")
-            self._set_output_dir(str(dst.parent.resolve()))
+            self._set_output_dir(str(self._report_dir.resolve()))
         except Exception as e:
             self._emit_log(f"XML模板导出失败：{e}")
 
@@ -631,41 +703,6 @@ class AppController(QObject):
         self._last_result_text = ""
         self.resultChanged.emit("")
         self._set_summary("-")
-        self._set_output_dir("")
+        self._set_output_dir(str(self._report_dir.resolve()))
         self._emit_log("已清空当前结果。")
 
-    @Slot()
-    def exportReport(self) -> None:
-        if not self._last_result_text:
-            self._emit_log("暂无可导出的结果。")
-            return
-        try:
-            report_dir = self._auto_system_root / "test" / "reports"
-            report_dir.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            report_path = report_dir / f"report_{ts}.md"
-            lines = [
-                "# 车机智能化测试报告",
-                "",
-                f"- 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                f"- 状态摘要: {self._summary_text}",
-                f"- 输出目录: {self._last_output_dir or '-'}",
-                "",
-                "## 最近任务历史",
-                "",
-                "```text",
-                self._history_text,
-                "```",
-                "",
-                "## 结果 JSON",
-                "",
-                "```json",
-                self._last_result_text,
-                "```",
-                "",
-            ]
-            report_path.write_text("\n".join(lines), encoding="utf-8")
-            self._emit_log(f"报告已导出：{report_path}")
-            self._set_output_dir(str(report_dir))
-        except Exception as e:
-            self._emit_log(f"导出报告失败：{e}")

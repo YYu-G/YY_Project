@@ -1,9 +1,11 @@
 import argparse
+import io
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 try:
     import yaml
@@ -164,13 +166,14 @@ class ModelTrainer:
         self,
         dataset_yaml: str,
         model_weights: str = "yolo11n.pt",
-        epochs: int = 100,
-        imgsz: int = 640,
+        epochs: int = 150,
+        imgsz: int = 1024,
         batch: int = 16,
         device: str = "cpu",
         workers: int = 4,
         run_name: str = "result",
         exist_ok: bool = True,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
         Train YOLO model from a dataset yaml file.
@@ -191,9 +194,15 @@ class ModelTrainer:
             ) from e
 
         self._install_ultralytics_save_retry(BaseTrainer)
+        self._ensure_stdio_for_headless()
 
         weights_path = self._resolve_weights(model_weights)
         model = YOLO(weights_path)
+        self._install_training_progress_callbacks(
+            model=model,
+            epochs=epochs,
+            progress_callback=progress_callback,
+        )
 
         run_name_unique = self._next_unique_name(self.models_root, run_name)
         train_result = model.train(
@@ -228,7 +237,8 @@ class ModelTrainer:
             lr0=0.0005,
             lrf=0.005,
             
-            val=True
+            val=True,
+            verbose=False,
         )
 
         save_dir = Path(getattr(train_result, "save_dir", self.models_root / run_name_unique))
@@ -269,6 +279,81 @@ class ModelTrainer:
         if results_csv.exists():
             result["results_csv"] = str(results_csv)
         return result
+
+    @staticmethod
+    def _ensure_stdio_for_headless() -> None:
+        """
+        In packaged GUI mode, sys.stdout/sys.stderr can be None.
+        Ultralytics/tqdm expects writable stream objects.
+        """
+        if sys.stdout is None:
+            sys.stdout = io.StringIO()
+        if sys.stderr is None:
+            sys.stderr = io.StringIO()
+
+    @staticmethod
+    def _install_training_progress_callbacks(
+        model: Any,
+        epochs: int,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]],
+    ) -> None:
+        if progress_callback is None:
+            return
+
+        def _safe_emit(payload: Dict[str, Any]) -> None:
+            try:
+                progress_callback(payload)
+            except Exception:
+                # Keep training unaffected even if UI callback fails.
+                pass
+
+        def _on_train_start(trainer: Any) -> None:
+            total = int(getattr(getattr(trainer, "args", None), "epochs", epochs))
+            _safe_emit({"type": "start", "current_epoch": 0, "total_epochs": total, "percent": 0.0})
+
+        def _on_epoch_end(trainer: Any) -> None:
+            total = int(getattr(getattr(trainer, "args", None), "epochs", epochs))
+            current = int(getattr(trainer, "epoch", -1)) + 1
+            if total <= 0:
+                percent = 0.0
+            else:
+                percent = max(0.0, min(100.0, (current / total) * 100.0))
+            _safe_emit(
+                {
+                    "type": "epoch",
+                    "current_epoch": current,
+                    "total_epochs": total,
+                    "percent": percent,
+                }
+            )
+
+        def _on_batch_end(trainer: Any) -> None:
+            total_epochs = int(getattr(getattr(trainer, "args", None), "epochs", epochs))
+            current_epoch = int(getattr(trainer, "epoch", -1)) + 1
+            total_batches = int(getattr(trainer, "nb", 0))
+            current_batch = int(getattr(trainer, "batch_i", -1)) + 1
+            if total_batches <= 0:
+                return
+            # Reduce UI log noise: emit every 5 batches and the final batch.
+            if (current_batch % 5 != 0) and (current_batch != total_batches):
+                return
+            percent = 0.0
+            if total_epochs > 0:
+                percent = max(0.0, min(100.0, ((current_epoch - 1) / total_epochs) * 100.0))
+            _safe_emit(
+                {
+                    "type": "batch",
+                    "current_epoch": current_epoch,
+                    "total_epochs": total_epochs,
+                    "current_batch": current_batch,
+                    "total_batches": total_batches,
+                    "percent": percent,
+                }
+            )
+
+        model.add_callback("on_train_start", _on_train_start)
+        model.add_callback("on_fit_epoch_end", _on_epoch_end)
+        model.add_callback("on_train_batch_end", _on_batch_end)
 
     @staticmethod
     def _install_ultralytics_save_retry(base_trainer_cls: Any) -> None:

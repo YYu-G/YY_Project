@@ -305,8 +305,8 @@ ApplicationWindow {
         return parseInt(nextBatch)
     }
     function normalizeTrainingInputs() {
-        epochsInput.text = clampIntText(epochsInput.text, 1, 3000, 20)
-        imgszInput.text = clampIntText(imgszInput.text, 64, 2048, 640)
+        epochsInput.text = clampIntText(epochsInput.text, 1, 3000, 150)
+        imgszInput.text = clampIntText(imgszInput.text, 64, 2048, 1024)
         clampBatchToDataset()
     }
 
@@ -509,7 +509,7 @@ ApplicationWindow {
 
                                         Label { text: "流程报告目录"; font.pixelSize: 18; color: "#0f172a" }
                                         Label {
-                                            text: "auto_system/test/reports"
+                                            text: appController.outputDir
                                             font.pixelSize: 16
                                             color: "#334155"
                                             Layout.fillWidth: true
@@ -755,10 +755,10 @@ ApplicationWindow {
                                                 id: epochsInput
                                                 anchors.fill: parent
                                                 anchors.margins: 2
-                                                text: "20"
+                                                text: "150"
                                                 validator: IntValidator { bottom: 1; top: 3000 }
-                                                onEditingFinished: text = clampIntText(text, 1, 3000, 20)
-                                                onActiveFocusChanged: if (!activeFocus) text = clampIntText(text, 1, 3000, 20)
+                                                onEditingFinished: text = clampIntText(text, 1, 3000, 150)
+                                                onActiveFocusChanged: if (!activeFocus) text = clampIntText(text, 1, 3000, 150)
                                                 horizontalAlignment: Text.AlignHCenter
                                                 color: "#0f172a"
                                                 font.pixelSize: 20
@@ -779,10 +779,10 @@ ApplicationWindow {
                                                 id: imgszInput
                                                 anchors.fill: parent
                                                 anchors.margins: 2
-                                                text: "640"
+                                                text: "1024"
                                                 validator: IntValidator { bottom: 64; top: 2048 }
-                                                onEditingFinished: text = clampIntText(text, 64, 2048, 640)
-                                                onActiveFocusChanged: if (!activeFocus) text = clampIntText(text, 64, 2048, 640)
+                                                onEditingFinished: text = clampIntText(text, 64, 2048, 1024)
+                                                onActiveFocusChanged: if (!activeFocus) text = clampIntText(text, 64, 2048, 1024)
                                                 horizontalAlignment: Text.AlignHCenter
                                                 color: "#0f172a"
                                                 font.pixelSize: 20
@@ -958,6 +958,7 @@ ApplicationWindow {
                                             color: "#0f172a"
                                         }
                                         LightCheckBox { id: simulateBox; text: "模拟测试"; checked: true }
+                                        LightCheckBox { id: continueOnFailureBox; text: "失败不中断"; checked: true }
                                         Item { Layout.fillWidth: true }
                                     }
 
@@ -971,7 +972,7 @@ ApplicationWindow {
                                                 selectedXmlPath,
                                                 processModelCombo.currentIndex >= 0 ? appController.resolveModelPath(modelNames[processModelCombo.currentIndex]) : "",
                                                 simulateBox.checked,
-                                                true,
+                                                continueOnFailureBox.checked,
                                                 screenSourceCombo.currentIndex === 1 ? "desktop" : "adb"
                                             )
                                         }
@@ -1015,15 +1016,14 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 8
-                                        GhostButton { text: "打开输出目录"; onClicked: appController.openOutputDir() }
-                                        GhostButton { text: "导出报告"; onClicked: appController.exportReport() }
+                                        GhostButton { text: "打开报告目录"; onClicked: appController.openOutputDir() }
                                         GhostButton { text: "清空结果"; implicitWidth: 120; onClicked: appController.clearResult() }
                                         GhostButton { text: "清空历史"; implicitWidth: 120; onClicked: appController.clearHistory() }
                                         Item { Layout.fillWidth: true }
                                     }
                                     Label {
                                         Layout.fillWidth: true
-                                        text: appController.outputDir.length > 0 ? ("输出目录: " + appController.outputDir) : "输出目录: -"
+                                        text: appController.outputDir.length > 0 ? ("报告目录: " + appController.outputDir) : "报告目录: -"
                                         color: "#334155"
                                         font.pixelSize: 14
                                         elide: Text.ElideMiddle
@@ -1230,6 +1230,7 @@ ApplicationWindow {
         processModelCombo.currentIndex = -1
     }
 }
+
 
 
 
